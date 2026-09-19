@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # Database (Block B+ state checkpointing)
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/black_box"
+
     @property
     def allowed_format_list(self) -> list[str]:
         return [f.strip().upper() for f in self.allowed_formats.split(",") if f.strip()]

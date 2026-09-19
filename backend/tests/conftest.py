@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 from black_box.main import app
 
 FIXTURES = Path(__file__).parent / "fixtures"
-
 MARKDOWN_STRATEGY = FIXTURES / "strategy_smoke.md"
 
 
@@ -24,3 +23,9 @@ def client() -> TestClient:
 @pytest.fixture()
 def strategy_md_bytes() -> bytes:
     return MARKDOWN_STRATEGY.read_bytes()
+
+
+@pytest.fixture()
+def strategy_session_id() -> str:
+    """A known test session ID for strategy endpoint tests."""
+    return "test-session-block-b"

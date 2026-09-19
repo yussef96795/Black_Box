@@ -3,13 +3,20 @@
 FastAPI + Docling 2.x document engineering backend for the Black_Box quant
 strategy platform (see `../plan.md` for the full roadmap, blocks A–D).
 
+## Current Status
+
+**Block A** (Ingestion & Feasibility Auditor) ✅ + **Block B scaffold** (LangGraph DAG, state schema, strategy API) ✅
+
 ## Quickstart
 
 ```bash
-# 1. Create local env config (values already match defaults)
+# 1. Create local env config
 cp .env.example .env
 
-# 2. Boot
+# 2. Install deps + sync lockfile
+uv sync
+
+# 3. Boot
 uv run uvicorn black_box.main:app --reload --port 8000
 # or: .venv/bin/uvicorn black_box.main:app
 ```
@@ -20,10 +27,9 @@ uv run uvicorn black_box.main:app --reload --port 8000
 curl -s localhost:8000/health
 curl -s -X POST localhost:8000/api/v1/documents/ingest \
   -F "file=@tests/fixtures/strategy_smoke.md;type=text/markdown"
+curl -s -X POST localhost:8000/api/v1/strategy/submit
+curl -s localhost:8000/api/v1/feasibility/capabilities
 ```
-
-Returns structure-aware chunks (`id`, `text`, `page`, `heading`, `tokens`,
-`meta`) produced by Docling's `HybridChunker`.
 
 ## Endpoints
 
@@ -31,6 +37,11 @@ Returns structure-aware chunks (`id`, `text`, `page`, `heading`, `tokens`,
 | ------ | -------------------------- | ---------------------------------- |
 | GET    | `/health`                  | Liveness probe (docling readiness) |
 | POST   | `/api/v1/documents/ingest` | Parse PDF/DOCX/HTML/MD → chunks    |
+| POST   | `/api/v1/strategy/submit`  | Create strategy session + kick off DAG |
+| GET    | `/api/v1/strategy/{id}/state` | Retrieve session state          |
+| POST   | `/api/v1/strategy/{id}/resume` | Inject HITL responses + resume |
+| GET    | `/api/v1/feasibility/capabilities` | Platform capability contract |
+| POST   | `/api/v1/feasibility/audit` | Run feasibility audit          |
 
 ## Configuration (`Settings`, env or `.env`)
 
@@ -38,23 +49,42 @@ Returns structure-aware chunks (`id`, `text`, `page`, `heading`, `tokens`,
 - `MAX_UPLOAD_SIZE` — bytes (default 25 MB), enforced pre-parse
 - `MAX_NUM_PAGES` — pages per document (default 500)
 - `API_PREFIX` — API version prefix (default `/api/v1`)
+- `DATABASE_URL` — PostgreSQL connection string for Block B+ checkpointing (default `postgresql+asyncpg://postgres:postgres@localhost:5432/black_box`)
 
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 Integration tests convert a real Markdown strategy document with the actual
-Docling converter and assert chunk structure + error paths.
+Docling converter and assert chunk structure + error paths. Block B tests
+validate the LangGraph DAG topology and strategy API endpoints.
 
 ## Layout
 
 ```
 src/black_box/
   main.py                 # FastAPI app + lifespan (owns DoclingService)
-  schemas.py              # API response contracts (ChunkOut, IngestResponse)
+  schemas.py              # API response contracts (ChunkOut, IngestResponse, etc.)
   core/config.py          # Settings (pydantic-settings, env/.env)
-  api/routes.py           # thin route handlers
-  services/docling_service.py  # Docling converter + HybridChunker singleton
+  core/capabilities.py    # Platform capability contract
+  api/routes.py           # Block A routes (ingest, feasibility)
+  api/strategy_routes.py  # Block B routes (strategy submit/state/resume)
+  services/docling_service.py  # Docling converter + HybridChunker
+  services/math_resolver.py    # Symbol/LaTeX resolution
+  services/table_validator.py  # Table schema validation
+  services/feasibility_auditor.py # Feasibility gate (4 checkers)
+  state/schema.py         # StrategyState Pydantic model (Block B)
+  state/nodes.py          # DAG node implementations (Block B)
+  state/graph.py          # LangGraph StateGraph topology (Block B)
+  state/__init__.py       # State module exports
+tests/                    # pytest suite (44 tests)
 ```
+
+## Roadmap
+
+- **Block B**: LangGraph DAG with PostgreSQL checkpointing, real PydanticAI
+  extractor nodes, WebSocket/SSE streaming, HITL gate
+- **Block C**: Statistical stress validation (vectorbt, CPCV, Monte Carlo)
+- **Block D**: Execution transpiler (Jinja2 → .mq5/.py), guardrail injection

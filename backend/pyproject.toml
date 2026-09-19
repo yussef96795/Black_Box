@@ -8,8 +8,12 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "alembic",
     "docling[charts,pdf]>=2.129.0",
     "fastapi>=0.141.1",
+    "langchain-core",
+    "langgraph",
+    "psycopg2-binary",
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
     "uvicorn>=0.53.0",
@@ -24,6 +28,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "asyncpg>=0.30.0",
     "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
