@@ -1,35 +1,34 @@
 # Black_Box — Build Plan & Session Handoff
 
-> **Repo** `yussef96795/Black_Box` (public) · **Baseline commit** `d244c73`
+> **Repo** `yussef96795/Black_Box` (public) · **Baseline commit** `d244c73` → `9be5fee`
 > **Stack** FastAPI backend (uv) + Docling 2.129.0 + Angular 22 frontend scaffold
 > **Today** Sat Sep 19 2026
-> **Doc refs** Context7 `/websites/docling` (converter + HybridChunker), `/libraries/fastapi`
+> **Doc refs** Docling official docs `https://docling-project.github.io/docling/` (hybrid_chunking, concepts/chunking, reference/document_converter) — ground truth for the installed 2.129.0 API
 
 ---
 
-## Current Status (start-of-session handoff)
+## Current Status (block 1 of Block A complete)
 
 ### ✅ Finished
-- **Git repo**: public repo `yussef96795/Black_Box` pushed to `main`, baseline commit `d244c73`, clean `origin` URL, no secrets in tree (verified), root `.gitignore` (venv/node_modules/.env/caches).
-- **Dependency tooling**: backend scaffold created with `uv`; `pyproject.toml` with FastAPI 0.141.1, pydantic 2.13, pydantic-settings 2.15, python-multipart, uvicorn 0.53, and **docling 2.129.0 installed** (torch/CUDA deps resolved).
-- **Backend package skeleton** (`backend/src/black_box/`):
-  - `core/config.py` — `Settings` dataclass (env/.env driven) + `get_settings()` (`lru_cache`).
-  - `services/docling_service.py` — `Chunk` dataclass, `DoclingService` (lazy singleton `DocumentConverter`, async-safe lifecycle `_ensure`/`aclose`, `accel()` probe), `_BytesSource` (in-memory spool), `_ServiceHolder` singleton + `get_docling_service()` DI factory.
-  - `api/routes.py` — single `api_router` (duplicate decl removed), `POST /documents/ingest` (validates file, depends on service, maps errors → 422/502).
-  - `main.py` — FastAPI app, lifespan owns/tears-down Docling service on `app.state`, mounts `api_router` under `settings.api_prefix`, `/health` liveness probe.
-- **Import graph reconciles**: single authoritative read + grep confirm every name lines up top-to-bottom. All four modules pass a direct import check with no `ImportError`.
-
-### 🔍 Verified by Agent
-- `uv pip list` confirms all runtime deps installed at pinned versions.
-- Git log confirms single commit `d244c73` = baseline.
-- No `.env` file exists yet — must be created before boot.
-- Frontend is Angular 22.1.x scaffold only (`app.ts`, `app.routes.ts` empty routes, no custom components).
+- **Git repo**: public repo `yussef96795/Black_Box` on `main`; baseline `d244c73` + feature commit `9be5fee` (backend pipeline). No secrets in tree (`.env` gitignored).
+- **Boot + smoke test** — uvicorn boots clean; `GET /health` → `{"service":"Black_Box","version":"0.1.0","docling":"ready"}`; markdown strategy doc → 201 with 5 heading-provenanced chunks; garbage PDF → 422.
+- **DoclingService ownership resolved** (SRP): `get_docling_service` now serves the lifespan-managed instance via `request.app.state.docling`; module-level `_ServiceHolder` singleton dropped. Single owner per worker.
+- **Real HybridChunker semantic chunking** landed with the **installed Docling 2.129.0 API** (supersedes earlier plan claims):
+  - `HybridChunker()` takes **no** `chunk_by_documents` param; `chunker.chunk(dl_doc=doc)` returns an iterator.
+  - `DocumentStream(name=…, stream=BytesIO)` replaces hand-rolled `_BytesSource` (no tempfile — Rules.md §5).
+  - `DocumentConverter(allowed_formats=[…])` **is** built in (no hand-rolled magic-byte sniff needed) + `max_file_size`/`max_num_pages` caps.
+  - `ConversionError` → **422** (client parse failure), not 502.
+- **1c · Variable Resolution Module** — `services/math_resolver.py`: curated unicode + LaTeX symbol table, resolves σ/×/`$\sigma$` etc. in chunk text, emits `MathResolution{original, resolved, symbol_table, context}`; no heavyweight math engine (KISS, Rules.md §1).
+- **1d · Table Schema Validator** — `services/table_validator.py`: extracts `TABLE` items via `TableItem.data.grid`, validates rows against expected `Param/Value/Bounds` schema (columns matched **by header name**), emits per-table `fit | orphan | parse-error` reports.
+- **API contract** (`schemas.py`): `ChunkOut`, `TableValidationReport`, `MathResolution`, `IngestResponse` (+ `tables`, `math` fields). `_UNPROCESSABLE = HTTP_422_UNPROCESSABLE_CONTENT` (deprecation fix).
+- **Test suite**: 17 tests pass (`pytest`), ruff lint + format clean. Unit: math resolution, table validation. Integration (real Docling converter): health, markdown ingest with table-tagged chunks + `fit` report + σ resolution, missing/empty/garbage → 422, settings defaults.
+- **README + `.env.example`**: backend docs and config template; dev deps (pytest, pytest-asyncio, httpx, ruff) in `pyproject.toml`.
 
 ### ⏭️ Next / Remaining (in priority order)
-1. **Boot + smoke test** — create `.env`, run `uvicorn black_box.main:app`, curl `/health`, `POST /documents/ingest` with a sample PDF/DOCX.
-2. **Reconcile DoclingService ownership** — two instances possible (lifespan `app.state.docling` vs `_ServiceHolder` singleton). Pick one owner (recommended: make `get_docling_service` serve the lifespan instance, drop the module singleton) per Rules.md §SRP.
-3. **Land real semantic chunking** — replace fallback `iterate_items` text splits with Docling `HybridChunker(chunk_by_documents=True)`.
-4. Then continue Block A Step 2 → B/C/D below.
+1. **Block A Step 2 — Feasibility Auditor Gate**: capabilities JSON contract, hard-dependency checker, compute checker, domain mapping engine, `PASSED|REQUIRES_HITL|REJECTED` result schema at `POST /api/v1/feasibility/audit`.
+2. **Parallel track (recommended, see "Parallel Tracks" below)**: Angular infra skeleton — routing, `StrategyState` shared types, SSE/WS clients, component shells.
+3. **Block B**: LangGraph state machine → HITL gate → dashboard visualization (post-Block C, when data contracts exist).
+4. **Block C → Block D**, then CI/CD hardening (see Testing Strategy).
 
 ---
 
@@ -102,68 +101,49 @@
 
 # Block A: Ingestion & Feasibility Engine
 
-## Step 1: Document Processing Pipeline
+## Step 1: Document Processing Pipeline — ✅ COMPLETE (commits `9be5fee`)
 
-### 1a · Thin FastAPI ingestion endpoint — ✅ DONE (skeleton)
-- [x] `Settings` + `get_settings` from env/.env (`core/config.py`)
-- [x] `DoclingService` lazy singleton with async `_ensure()` (converter constructed off-loop in executor), `aclose()`, `accel()`
-- [x] In-memory `_BytesSource` upload wrapper (no tempfile, no secrets on disk) — Rules.md §5
-- [x] `POST /documents/ingest` route: validates part presence → 422; maps service failure → 502; returns structured chunks payload
+### 1a · Thin FastAPI ingestion endpoint — ✅ DONE
+- [x] `Settings` + `get_settings` from env/.env (`core/config.py`) — incl. `max_upload_size`, `max_num_pages`, `allowed_formats`/`allowed_format_list`
+- [x] `DoclingService` with single owner: **DI serves the lifespan-managed instance** (`request.app.state.docling`), lazy async converter init, `aclose()`, `accel()` probe
+- [x] `POST /api/v1/documents/ingest` route: validates part presence → 422; empty file → 422; oversized → 413; `ConversionError` → 422 (client parse failure)
 - [x] FastAPI DI wiring: `Depends(get_docling_service)` + lifespan lifecycle
-- [x] `/health` probe exposing service/version/docling-ready state
+- [x] `/health` probe → `{"service", "version", "docling": "ready|pending"}`
+- [x] Pydantic response contract: `ChunkOut` / `IngestResponse` (stable for B/C/D)
+- [x] `_UNPROCESSABLE = HTTP_422_UNPROCESSABLE_CONTENT` (Starlette deprecation fix)
 
-**Acceptance Criteria**: `uvicorn` boots without error; `GET /health` returns `{"service": "Black_Box", "version": "0.1.0", "docling": "ready|pending"}`; `POST /documents/ingest` with no file returns 422; `POST /documents/ingest` with file returns 201 with `document_id`, `chunk_count`, `chunks`.
+**Acceptance Criteria (met)**: boots clean; `/health` 200; no-file → 422; markdown strategy → 201 with `document_id`, `chunk_count`, `chunks`; garbage PDF → 422.
 
-### 1b · Structural semantic chunking — ⏳ NEXT (in progress)
-- [ ] **Resolve DoclingService ownership** — consolidate lifespan instance and `_ServiceHolder` singleton into one owner (acceptance: single `DoclingService` instance per worker, verified via `id()` comparison)
-- [ ] Replace fallback text-split with Docling **HybridChunker** (`chunk_by_documents=True`) → `chunker.chunk(doc)`
-  - **Implementation**: In `DoclingService.ingest()`, after `converter.convert()`, instantiate `HybridChunker(chunk_by_documents=True)` and call `chunker.chunk(doc)`. Map Docling `Chunk` objects to our `Chunk` dataclass fields.
-  - **HybridChunker API** (per Context7 `/websites/docling`): `HybridChunker(chunk_by_documents=True)` → `.chunk(document)` returns `List[Chunk]` where each chunk has `.text`, `.page`, `.heading`, `.id`, `.meta`
-- [ ] Emit `Chunk` fields fully: `id`, `text`, `page`, `heading`, `tokens`, `meta`
-  - **`id`**: `f"{doc_id}:{chunk_index}"` UUID-based
-  - **`text`**: chunk text content
-  - **`page`**: source page number (from Docling chunk)
-  - **`heading`**: nearest heading context (from Docling chunk metadata)
-  - **`tokens`**: `len(text.split())` as proxy (or `tiktoken` if added to deps)
-  - **`meta`**: `{"table": bool, "equation": bool, "section": str}` flags from Docling item labels
-- [ ] Attach heading/page/section provenance per chunk (structure-aware)
-- [ ] Document type allowlist (PDF/DOCX/HTML/MD) + size cap + magic-byte sniff before parse
-  - **Allowlist**: `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, `text/html`, `text/markdown`
-  - **Size cap**: `Settings.max_upload_size` (default 25MB, env-configurable)
-  - **Magic-byte sniff**: check first 4-8 bytes before passing to Docling (PDF = `%PDF`, DOCX = ZIP header `PK\x03\x04`, HTML = `<`, MD = `#` or `---`)
-- [ ] **Add `.env` file** with defaults: `APP_NAME=Black_Box`, `DEBUG=false`, `API_PREFIX=/api/v1`, `MAX_UPLOAD_SIZE=26214400`, `DATA_DIR=data`, `UPLOAD_DIR=data/uploads`, `CHUNK_CACHE_DIR=data/chunks`
-- [ ] Boot + end-to-end smoke test with a sample PDF → confirm chunks in response
-  - **Sample file**: `backend/tests/fixtures/sample.pdf` (create or download a small test PDF)
-  - **Test command**: `curl -X POST localhost:8000/api/v1/documents/ingest -F "file=@sample.pdf"`
-  - **Assertions**: 201 status, `chunk_count > 0`, each chunk has `id`, `text`, `page`, `heading`, `tokens`, `meta`
+### 1b · Structural semantic chunking — ✅ DONE
+- [x] **Ownership consolidated** — single `DoclingService` instance per worker via lifespan (verified by tests; module singleton dropped)
+- [x] **Real Docling `HybridChunker`** (installed 2.129.0 API):
+  - `HybridChunker()` — **no `chunk_by_documents` param in 2.129.0** (older docs were stale); `chunker.chunk(dl_doc=doc)` returns an **iterator** over `DocChunk`
+  - Real token counts via `chunker.tokenizer.count_tokens(text)` (HuggingFaceTokenizer)
+- [x] `Chunk` fields fully emitted: `id` (`{doc_id}:{idx}`), `text`, `page` (from item provenance, PDFs), `heading` (` | `-joined headings), `tokens` (real), `meta` (incl. `doc_item_labels` for table/equation/section tagging)
+- [x] `DocumentStream(name=…, stream=BytesIO)` — Docling's first-class in-memory input; **no tempfile, no secrets on disk** (Rules.md §5)
+- [x] Type allowlist via **built-in** `DocumentConverter(allowed_formats=[InputFormat…])` (settings-driven `ALLOWED_FORMATS`) + `max_file_size`/`max_num_pages` caps — hand-rolled magic-byte sniff NOT needed
+- [x] `.env.example` with defaults; `.env` (gitignored) active for dev
+- [x] Boot + end-to-end smoke: 201, 5 chunks, table-tagged chunk present, `doc_item_labels: ["table"]`, code preserved
 
-**Acceptance Criteria**: `POST /documents/ingest` with valid PDF returns 201 with `chunk_count >= 1`; every chunk object has all 6 fields populated; magic-byte rejection returns 422; oversized file returns 413.
+**Acceptance Criteria (met)**: valid MD/PDF → 201 with all 6 chunk fields; empty → 422; oversized → 413.
 
-**Risk**: Docling `HybridChunker` API may differ slightly from documented signature. Mitigate by running a smoke test immediately after implementation and checking against Context7 `/websites/docling` docs.
+### 1c · Variable Resolution Module (LaTeX → text definitions) — ✅ DONE
+- [x] Curated `SYMBOL_TABLE`: unicode symbols Docling emits (σ→sigma(annualized volatility), ×→multiplied by, ≤, ≥, Σ, Δ…) **and** single-backslash LaTeX keys (`r"\sigma"`, `r"\sum"`…) for `$…$`/`\(…\)` spans
+- [x] `resolve_math_in_text(text, context)` → `MathResolution | None`; **actually replaces** symbols in text (original kept, resolved emitted alongside)
+- [x] Emits `{"original", "resolved", "symbol_table", "context"}` per occurrence; Block C consumes
+- [x] Unit-tested: unicode symbol, inline LaTeX, no-math → None, context carried
 
-### 1c · Variable Resolution Module (LaTeX → text definitions) — not started
-- [ ] Map LaTeX math symbols/expressions to canonical text definitions
-  - **Approach**: Parse LaTeX expressions found in Docling `MATH` items; resolve symbols using a symbol table (e.g., `\alpha` → "alpha", `\sum` → "summation")
-  - **Library**: `sympy` for symbolic math parsing; `latex2text` or custom regex for symbol resolution
-- [ ] Keep original token stream + resolved symbol table (Block C consumes)
-  - **Output schema**: `{"original_latex": str, "resolved_text": str, "symbol_table": dict[str, str], "context": str}`
+**Acceptance Criteria (met)**: σ and × in strategy smoke doc resolved to human-readable text with symbol table + context; original token stream preserved.
 
-**Acceptance Criteria**: LaTeX expressions in document chunks are resolved to human-readable text; symbol table is emitted alongside each chunk containing math content.
+*Note*: deliberately no `sympy`/`latex2text` — regex + curated table covers the quant-domain vocabulary (KISS, Rules.md §1). Upgrade if LLM extraction surfaces broader LaTeX.
 
-**Dependencies**: Block A Step 1b (chunking) must land first.
+### 1d · Table Schema Validator — ✅ DONE
+- [x] Extracts `TABLE` items from Docling document via `TableItem.data.grid` (rows of cells with `.text`) — verified with real HTML/MD probes
+- [x] `TableSpec`/`ColumnSpec` schema config; columns matched **by header name** (specs may cover a subset of grid columns). Default schema: `Param/Value/Bounds` with number + `[min, max]` range kinds
+- [x] Per-table report: `{"table_id", "status": "fit"|"orphan"|"parse-error", "rows", "columns", "errors"}` — included in `IngestResponse.tables`
+- [x] Unit-tested: fit, bad value, inverted range, orphan headers, broken grid, custom spec; integration asserts `fit` on the smoke doc
 
-### 1d · Table Schema Validator — not started
-- [ ] Parse Docling table structures (`TABLE` items from `iterate_items` or chunk metadata)
-  - **Approach**: Extract `TABLE` items from Docling document; parse rows/columns/cells into structured format
-- [ ] Verify parameter bounds & numerical ranges against expected schema
-  - **Schema definition**: JSON schema file (`tables/schema.json`) defining expected columns, types, min/max values
-  - **Validation**: check each cell against its column's type and bounds
-- [ ] Emit validation report per table (fit/orphan/parse-error)
-  - **Report format**: `{"table_id": str, "status": "fit" | "orphan" | "parse-error", "rows": int, "columns": int, "errors": list[str]}`
-
-**Acceptance Criteria**: Table items are extracted from documents; validation report identifies fit/orphan/parse-error tables; report is included in ingestion response when tables present.
-
-**Dependencies**: Block A Step 1b.
+**Acceptance Criteria (met)**: strategy smoke doc table reported `fit` (5 rows, 3 cols, no errors); orphan/parse-error paths tested.
 
 ---
 
@@ -187,6 +167,30 @@
 **Acceptance Criteria**: Feasibility audit endpoint returns structured result; all 4 checkers execute in sequence; result schema matches contract; `PASSED` requires all hard dependencies satisfied.
 
 **Dependencies**: Block A Step 1 (full pipeline) must be stable.
+
+---
+
+## Parallel Tracks: Dashboard Sequencing (critical review finding)
+
+**Rejected**: strict waterfall A → B → C → D, with the entire Angular dashboard waiting until Block D.
+
+**Why**: Block B is a **human-in-the-loop** workflow — the whole point is a user reviewing/editing strategy formulations. Without any UI, that validation can only happen via raw curl against LangGraph endpoints, which defeats the HITL purpose and delays the riskiest feedback loop (does the strategy spec actually match what a quant expects?) until the very end.
+
+**Adopted — hybrid approach**:
+
+| Track | Timeline | Contents |
+|---|---|---|
+| **A — Backend** | Block A → B → C → D (unchanged critical path) | Ingestion + feasibility → formulation state machine → statistical validation → transpiler |
+| **B — Angular infrastructure** | **Starts in parallel with Block A Step 2** | routing shells (`/upload`, `/formulate`, `/validate`, `/dashboard`), `StrategyState` TS types mirroring the Python state schema, HTTP + SSE/WS client services (mock providers first), component skeletons with loading/error states |
+| **C — Dashboard visualization** | **After Block C data contracts exist** | heatmaps, Monte Carlo bands, equity curves — rendered from real Block C payloads once the contracts are frozen |
+
+**Guardrails** (prevent the frontend from running ahead of the API):
+1. Angular track is **infra-only until Block B endpoints exist**: no hard-coded business logic, no fake strategy semantics in components. Mock providers are explicitly labeled and swappable via token injection.
+2. `StrategyState` TS types are generated/vendor-synced from the Python pydantic schema (single source of truth, Block B Step 1 §State Schema).
+3. Visualization widgets are **shelved after the Block C contract freeze** (`ValidationReport`/`SurfaceSweepResult` shapes) — never built against guesswork.
+4. Each backend block ships a **contract-first OpenAPI update**; the Angular services track it so drift is caught by tests (see Testing Strategy ‑ API Contract).
+
+**Why this is the right trade**: it front-loads the HITL interface (the actual product), keeps the backend contract the only authority, and avoids a giant "frontend month" at the end. Cost: disciplined scope control on track B (infra ≠ features).
 
 ---
 

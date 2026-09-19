@@ -27,6 +27,8 @@ from fastapi import HTTPException, Request, UploadFile, status
 
 from black_box.core.config import get_settings
 from black_box.schemas import ChunkOut, IngestResponse
+from black_box.services.math_resolver import resolve_math_in_text
+from black_box.services.table_validator import validate_tables
 
 _UNPROCESSABLE = status.HTTP_422_UNPROCESSABLE_CONTENT
 
@@ -190,6 +192,7 @@ class DoclingService:
 
         chunks: list[Chunk] = []
         total_tokens = 0
+        math_resolutions = []
         for idx, c in enumerate(raw_chunks):
             text = getattr(c, "text", "") or ""
             heading = self._headings_of(c)
@@ -210,6 +213,14 @@ class DoclingService:
                     meta=self._meta_of(c),
                 )
             )
+            # 1c: resolve math symbols in this chunk (Block C consumes later)
+            if resolution := resolve_math_in_text(text, context=heading or ""):
+                math_resolutions.append(resolution)
+
+        # 1d: validate every extracted table against the expected schema
+        table_reports = await asyncio.get_running_loop().run_in_executor(
+            None, validate_tables, doc
+        )
 
         return IngestResponse(
             document_id=doc_id,
@@ -217,6 +228,8 @@ class DoclingService:
             chunk_count=len(chunks),
             total_tokens=total_tokens,
             chunks=[ChunkOut(**c.__dict__) for c in chunks],
+            tables=table_reports,
+            math=math_resolutions,
         )
 
     # -- chunk introspection helpers -----------------------------------------

@@ -28,6 +28,25 @@ class ChunkOut(BaseModel):
     )
 
 
+class TableValidationReport(BaseModel):
+    """Per-table validation outcome (Block A Step 1d)."""
+
+    table_id: str
+    status: str = Field(description="fit | orphan | parse-error")
+    rows: int = 0
+    columns: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
+class MathResolution(BaseModel):
+    """Resolved math/symbol occurrence (Block A Step 1c)."""
+
+    original: str
+    resolved: str
+    symbol_table: dict[str, str] = Field(default_factory=dict)
+    context: str = Field(default="")
+
+
 class IngestResponse(BaseModel):
     """Payload of `POST /api/v1/documents/ingest`."""
 
@@ -36,3 +55,5 @@ class IngestResponse(BaseModel):
     chunk_count: int
     total_tokens: int
     chunks: list[ChunkOut]
+    tables: list[TableValidationReport] = Field(default_factory=list)
+    math: list[MathResolution] = Field(default_factory=list)

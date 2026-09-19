@@ -35,6 +35,13 @@ def test_ingest_markdown_strategy(client, strategy_md_bytes) -> None:
         c for c in body["chunks"] if "table" in c["meta"]["doc_item_labels"]
     ]
     assert table_chunks, "expected at least one table-tagged chunk"
+    # 1d: a validated parameters table must be reported as fit
+    assert body["tables"], "expected a table validation report"
+    assert body["tables"][0]["status"] == "fit"
+    assert body["tables"][0]["rows"] >= 1
+    # 1c: the volatility symbol (σ) must be resolved
+    assert body["math"], "expected at least one math resolution"
+    assert any("sigma" in r["resolved"] for r in body["math"])
 
 
 def test_ingest_missing_file(client) -> None:
