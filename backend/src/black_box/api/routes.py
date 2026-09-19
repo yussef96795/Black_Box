@@ -13,10 +13,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from black_box.schemas import IngestResponse
+from black_box.core.capabilities import DEFAULT_CAPABILITIES, Capabilities
+from black_box.schemas import (
+    FeasibilityAuditRequest,
+    FeasibilityResult,
+    IngestResponse,
+)
 from black_box.services.docling_service import DoclingService, get_docling_service
+from black_box.services.feasibility_auditor import audit
 
 api_router = APIRouter(prefix="/documents", tags=["documents"])
+feasibility_router = APIRouter(prefix="/feasibility", tags=["feasibility"])
 
 _UNPROCESSABLE = status.HTTP_422_UNPROCESSABLE_CONTENT
 
@@ -55,3 +62,28 @@ async def ingest_document(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Ingestion pipeline error: {exc}",
         ) from exc
+
+
+# --- Block A Step 2: Feasibility Auditor Gate --------------------------------
+
+
+@feasibility_router.get("/capabilities", response_model=Capabilities)
+async def get_capabilities() -> Capabilities:
+    """Expose the platform capability contract the auditor tests against."""
+    return DEFAULT_CAPABILITIES
+
+
+@feasibility_router.post("/audit", response_model=FeasibilityResult)
+async def audit_feasibility(request: FeasibilityAuditRequest) -> FeasibilityResult:
+    """Run the four checkers (dependencies, compute, domain, tables) in sequence.
+
+    Deterministic rule-based verdict: any REJECTED check rejects the strategy,
+    else any REQUIRES_HITL check routes it to the human-in-the-loop gate
+    (Block B), else the strategy PASSES.
+    """
+    if not request.text or not request.text.strip():
+        raise HTTPException(
+            status_code=_UNPROCESSABLE,
+            detail="Request 'text' must be non-empty.",
+        )
+    return audit(request.text, request.tables)

@@ -7,10 +7,10 @@
 
 ---
 
-## Current Status (block 1 of Block A complete)
+## Current Status (Block A complete)
 
 ### ✅ Finished
-- **Git repo**: public repo `yussef96795/Black_Box` on `main`; baseline `d244c73` + feature commit `9be5fee` (backend pipeline). No secrets in tree (`.env` gitignored).
+- **Git repo**: public repo `yussef96795/Black_Box` on `main`; baseline `d244c73` + commits `9be5fee`, `7d207f2` (+ pending feasibility push). No secrets in tree (`.env` gitignored).
 - **Boot + smoke test** — uvicorn boots clean; `GET /health` → `{"service":"Black_Box","version":"0.1.0","docling":"ready"}`; markdown strategy doc → 201 with 5 heading-provenanced chunks; garbage PDF → 422.
 - **DoclingService ownership resolved** (SRP): `get_docling_service` now serves the lifespan-managed instance via `request.app.state.docling`; module-level `_ServiceHolder` singleton dropped. Single owner per worker.
 - **Real HybridChunker semantic chunking** landed with the **installed Docling 2.129.0 API** (supersedes earlier plan claims):
@@ -20,15 +20,15 @@
   - `ConversionError` → **422** (client parse failure), not 502.
 - **1c · Variable Resolution Module** — `services/math_resolver.py`: curated unicode + LaTeX symbol table, resolves σ/×/`$\sigma$` etc. in chunk text, emits `MathResolution{original, resolved, symbol_table, context}`; no heavyweight math engine (KISS, Rules.md §1).
 - **1d · Table Schema Validator** — `services/table_validator.py`: extracts `TABLE` items via `TableItem.data.grid`, validates rows against expected `Param/Value/Bounds` schema (columns matched **by header name**), emits per-table `fit | orphan | parse-error` reports.
-- **API contract** (`schemas.py`): `ChunkOut`, `TableValidationReport`, `MathResolution`, `IngestResponse` (+ `tables`, `math` fields). `_UNPROCESSABLE = HTTP_422_UNPROCESSABLE_CONTENT` (deprecation fix).
-- **Test suite**: 17 tests pass (`pytest`), ruff lint + format clean. Unit: math resolution, table validation. Integration (real Docling converter): health, markdown ingest with table-tagged chunks + `fit` report + σ resolution, missing/empty/garbage → 422, settings defaults.
+- **API contract** (`schemas.py`): `ChunkOut`, `TableValidationReport`, `MathResolution`, `IngestResponse` (+ `tables`, `math`), feasibility models (`DataDependency`, `ModelCheck`, `DomainMapping`, `FeasibilityAuditRequest`, `FeasibilityCheck`, `FeasibilityResult`). `_UNPROCESSABLE = HTTP_422_UNPROCESSABLE_CONTENT` (deprecation fix).
+- **Test suite**: 29 tests pass (`pytest`), ruff lint + format clean. Unit: math resolution, table validation, feasibility checkers. Integration (real Docling converter): health, markdown ingest with table-tagged chunks + `fit` report + σ resolution, missing/empty/garbage → 422, settings defaults, capabilities + audit endpoints.
 - **README + `.env.example`**: backend docs and config template; dev deps (pytest, pytest-asyncio, httpx, ruff) in `pyproject.toml`.
+- **2 · Feasibility Auditor Gate** — `core/capabilities.py` (capability contract, `GET /api/v1/feasibility/capabilities`) + `services/feasibility_auditor.py` (4 rule-based checkers: hard dependencies, algorithmic/compute, domain mapping, tables) + `POST /api/v1/feasibility/audit` → `PASSED | REQUIRES_HITL | REJECTED`. Live-verified: crypto-native → PASSED, LSTM → REJECTED.
 
 ### ⏭️ Next / Remaining (in priority order)
-1. **Block A Step 2 — Feasibility Auditor Gate**: capabilities JSON contract, hard-dependency checker, compute checker, domain mapping engine, `PASSED|REQUIRES_HITL|REJECTED` result schema at `POST /api/v1/feasibility/audit`.
+1. **Block B: Formulation Engine** — LangGraph state machine core → HITL gate (critical path A→D continues here).
 2. **Parallel track (recommended, see "Parallel Tracks" below)**: Angular infra skeleton — routing, `StrategyState` shared types, SSE/WS clients, component shells.
-3. **Block B**: LangGraph state machine → HITL gate → dashboard visualization (post-Block C, when data contracts exist).
-4. **Block C → Block D**, then CI/CD hardening (see Testing Strategy).
+3. **Block C** statistical validation → **Block D** transpiler, then CI/CD hardening (see Testing Strategy).
 
 ---
 
@@ -147,26 +147,17 @@
 
 ---
 
-## Step 2: Block A.5 Feasibility Auditor Gate
-- [ ] **Define System Capabilities JSON contract** (data granularity, supported primitives)
-  - **Schema**: `{"capabilities": [{"name": str, "type": "data" | "compute" | "domain", "granularity": str, "primitives": [str]}], "version": str}`
-- [ ] **Build Hard Dependency Checker** (L3 data, latency, non-crypto TradFi dependencies)
-  - Checks for required data sources, latency SLA, non-crypto dependencies (e.g., Bloomberg, Reuters feeds)
-  - Output: `{"dependencies": [{"name": str, "status": "satisfied" | "missing" | "partial", "latency_ms": int}]}`
-- [ ] **Build Algorithmic & Compute Checker** (black-box ML models, compute bounds)
-  - Validates that strategies don't rely on unsupported black-box models
-  - Checks compute bounds (GPU memory, inference time) against available hardware
-  - Output: `{"models": [...], "compute_budget": {"gpu_memory_mb": int, "inference_ms": int}}`
-- [ ] **Build Domain Mapping Engine** (TradFi primitives to crypto analogs: rates, trading hours)
-  - Maps TradFi concepts (interest rates, market hours, order types) to crypto equivalents
-  - Output: `{"mapping": [{"tradfi": str, "crypto": str, "confidence": float}]}`
-- [ ] **Implement Feasibility Result Schema output** (`PASSED`, `REQUIRES_HITL`, `REJECTED`)
-  - **Endpoint**: `POST /api/v1/feasibility/audit`
-  - **Result schema**: `{"status": "PASSED" | "REQUIRES_HITL" | "REJECTED", "checks": [...], "summary": str}`
+## Step 2: Block A.5 Feasibility Auditor Gate — ✅ DONE
+- [x] **System Capabilities JSON contract** (`core/capabilities.py`, `Capabilities` pydantic model, `version: 1.0.0`) — data (crypto L3 vs unsupported equity/rates), compute (vectorized backtest only; ML inference unsupported), domain (24/7 perpetuals, funding-rate analog…). Exposed at `GET /api/v1/feasibility/capabilities`.
+- [x] **Hard Dependency Checker** — keyword taxonomy over the strategy text: crypto-native providers (Binance/Coinbase/OKX/CCXT…) → `satisfied`; TradFi providers (Bloomberg/Reuters/FRED/Yahoo…) → `partial` when a mentioned domain concept offers an analog (needs HITL), else `missing`; granularity demands (tick/L3/orderbook/daily…) checked against capability table. Output: `[{name, status: satisfied|missing|partial, latency_ms, evidence}]` (`latency_ms: null` until real feeds land).
+- [x] **Algorithmic & Compute Checker** — black-box models (neural network/LSTM/xgboost/LLM…) → REJECTED; compute hints (GPU / real-time inference / high-frequency) → REQUIRES_HITL. Output: `{models: [{name, supported, reason}], compute_budget: {gpu_memory_mb, inference_ms, hints}}`.
+- [x] **Domain Mapping Engine** — 12 TradFi→crypto analogs with confidence (interest rate→funding rate 0.9, settlement→instant 0.85, trading hours→24/7 0.95, dark pool→RFQ 0.7, FOMC→macro/on-chain 0.6…). Confidence < 0.7 → REQUIRES_HITL. Output: `[{tradfi, crypto, confidence, note}]`.
+- [x] **Table gate** — 1d validation reports from ingest feed the audit: non-`fit` tables (parse-error/orphan) → REQUIRES_HITL.
+- [x] **Feasibility Result schema** — `POST /api/v1/feasibility/audit` body `{text, tables?}` → `{status: PASSED|REQUIRES_HITL|REJECTED, checks: [{name, status, details}], summary}`. Aggregate: any REJECTED → REJECTED; else any REQUIRES_HITL → REQUIRES_HITL; else PASSED.
 
-**Acceptance Criteria**: Feasibility audit endpoint returns structured result; all 4 checkers execute in sequence; result schema matches contract; `PASSED` requires all hard dependencies satisfied.
+**Acceptance Criteria (met)**: audit endpoint returns structured result; all 4 checkers execute in sequence; result schema matches contract; `PASSED` requires all hard dependencies satisfied. 12 new tests (unit + API integration); live curl verified PASSED (crypto-native) and REJECTED (LSTM) paths.
 
-**Dependencies**: Block A Step 1 (full pipeline) must be stable.
+**Dependencies**: Block A Step 1 (full pipeline) stable — required, and satisfied.
 
 ---
 

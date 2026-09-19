@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from black_box.api.routes import api_router
+from black_box.api.routes import api_router, feasibility_router
 from black_box.core.config import get_settings
 from black_box.services.docling_service import DoclingService
 
@@ -40,6 +40,7 @@ app = FastAPI(
 )
 
 app.include_router(api_router, prefix=settings.api_prefix)
+app.include_router(feasibility_router, prefix=settings.api_prefix)
 
 
 @app.get("/health", tags=["ops"], include_in_schema=False)

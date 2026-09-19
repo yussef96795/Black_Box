@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -57,3 +57,62 @@ class IngestResponse(BaseModel):
     chunks: list[ChunkOut]
     tables: list[TableValidationReport] = Field(default_factory=list)
     math: list[MathResolution] = Field(default_factory=list)
+
+
+# --- Block A Step 2: Feasibility Auditor -------------------------------------
+
+
+class DataDependency(BaseModel):
+    """One data-source requirement detected in the strategy spec."""
+
+    name: str
+    status: Literal["satisfied", "missing", "partial"]
+    latency_ms: int | None = Field(
+        default=None, description="null until real data feeds are measured"
+    )
+    evidence: str = Field(default="")
+
+
+class ModelCheck(BaseModel):
+    """One model/compute requirement flagged by the compute checker."""
+
+    name: str
+    supported: bool
+    reason: str = Field(default="")
+
+
+class DomainMapping(BaseModel):
+    """A TradFi concept mapped to its crypto analog (with confidence)."""
+
+    tradfi: str
+    crypto: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    note: str = Field(default="")
+
+
+class FeasibilityAuditRequest(BaseModel):
+    """Input to `POST /api/v1/feasibility/audit`.
+
+    `text` is the extracted strategy specification (concatenated chunks or raw
+    document text); `tables` optionally carry the 1d validation reports so the
+    auditor can gate on unreadable parameter tables.
+    """
+
+    text: str = Field(min_length=1, description="Strategy specification text")
+    tables: list[TableValidationReport] = Field(default_factory=list)
+
+
+class FeasibilityCheck(BaseModel):
+    """Per-checker verdict inside a FeasibilityResult."""
+
+    name: str
+    status: Literal["PASSED", "REQUIRES_HITL", "REJECTED"]
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class FeasibilityResult(BaseModel):
+    """Aggregated verdict of `POST /api/v1/feasibility/audit`."""
+
+    status: Literal["PASSED", "REQUIRES_HITL", "REJECTED"]
+    checks: list[FeasibilityCheck]
+    summary: str
