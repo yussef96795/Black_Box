@@ -1,6 +1,6 @@
 # Black_Box — Build Plan & Session Handoff
 
-> **Repo** `yussef96795/Black_Box` (public) · **Baseline commit** `d244c73` → `9be5fee`
+> **Repo** `yussef96795/Black_Box` (public) · **Baseline commit** `d244c73` → `b068a35` (Block A complete)
 > **Stack** FastAPI backend (uv) + Docling 2.129.0 + Angular 22 frontend scaffold
 > **Today** Sat Sep 19 2026
 > **Doc refs** Docling official docs `https://docling-project.github.io/docling/` (hybrid_chunking, concepts/chunking, reference/document_converter) — ground truth for the installed 2.129.0 API
@@ -10,7 +10,7 @@
 ## Current Status (Block A complete)
 
 ### ✅ Finished
-- **Git repo**: public repo `yussef96795/Black_Box` on `main`; baseline `d244c73` + commits `9be5fee`, `7d207f2` (+ pending feasibility push). No secrets in tree (`.env` gitignored).
+- **Git repo**: public repo `yussef96795/Black_Box` on `main`; baseline `d244c73` + commits `9be5fee`, `7d207f2`, `b068a35` (Block A complete). No secrets in tree (`.env` gitignored).
 - **Boot + smoke test** — uvicorn boots clean; `GET /health` → `{"service":"Black_Box","version":"0.1.0","docling":"ready"}`; markdown strategy doc → 201 with 5 heading-provenanced chunks; garbage PDF → 422.
 - **DoclingService ownership resolved** (SRP): `get_docling_service` now serves the lifespan-managed instance via `request.app.state.docling`; module-level `_ServiceHolder` singleton dropped. Single owner per worker.
 - **Real HybridChunker semantic chunking** landed with the **installed Docling 2.129.0 API** (supersedes earlier plan claims):
@@ -26,9 +26,10 @@
 - **2 · Feasibility Auditor Gate** — `core/capabilities.py` (capability contract, `GET /api/v1/feasibility/capabilities`) + `services/feasibility_auditor.py` (4 rule-based checkers: hard dependencies, algorithmic/compute, domain mapping, tables) + `POST /api/v1/feasibility/audit` → `PASSED | REQUIRES_HITL | REJECTED`. Live-verified: crypto-native → PASSED, LSTM → REJECTED.
 
 ### ⏭️ Next / Remaining (in priority order)
-1. **Block B: Formulation Engine** — LangGraph state machine core → HITL gate (critical path A→D continues here).
-2. **Parallel track (recommended, see "Parallel Tracks" below)**: Angular infra skeleton — routing, `StrategyState` shared types, SSE/WS clients, component shells.
-3. **Block C** statistical validation → **Block D** transpiler, then CI/CD hardening (see Testing Strategy).
+1. **Block B: Formulation Engine** — LangGraph state machine core (`state/schema.py`, nodes, PostgreSQL checkpointing) → HITL gate. **(deps staged by coordination port; ownership TBD — see Port Coordination)**
+2. **Block C** statistical stress validation (contract freeze gates dashboard work).
+3. **Block D** transpiler + backend aggregation, then CI/CD hardening (see Testing Strategy).
+4. **Frontend (PAUSED)** — restart only after Stitch/Figma design handoff (user decision).
 
 ---
 
@@ -167,21 +168,42 @@
 
 **Why**: Block B is a **human-in-the-loop** workflow — the whole point is a user reviewing/editing strategy formulations. Without any UI, that validation can only happen via raw curl against LangGraph endpoints, which defeats the HITL purpose and delays the riskiest feedback loop (does the strategy spec actually match what a quant expects?) until the very end.
 
-**Adopted — hybrid approach**:
+**USER DECISION (Sep 19 2026) — frontend deferred**: the user will design the dashboard in **Stitch / Figma first**. Until designs are handed off:
+- **NO frontend work in any port** (Angular scaffold stays untouched at baseline).
+- Backend-only focus across all ports.
+- Dashboard *backend* data aggregation (Block D Step 2 backend half) may proceed without the UI.
+
+**Backend track (unchanged critical path)**: Block A → B → C → D, all backend.
 
 | Track | Timeline | Contents |
 |---|---|---|
-| **A — Backend** | Block A → B → C → D (unchanged critical path) | Ingestion + feasibility → formulation state machine → statistical validation → transpiler |
-| **B — Angular infrastructure** | **Starts in parallel with Block A Step 2** | routing shells (`/upload`, `/formulate`, `/validate`, `/dashboard`), `StrategyState` TS types mirroring the Python state schema, HTTP + SSE/WS client services (mock providers first), component skeletons with loading/error states |
-| **C — Dashboard visualization** | **After Block C data contracts exist** | heatmaps, Monte Carlo bands, equity curves — rendered from real Block C payloads once the contracts are frozen |
+| **A — Backend** | Block A → B → C → D | Ingestion + feasibility → formulation state machine → statistical validation → transpiler + aggregation |
+| **B — Frontend** | **PAUSED — gated on Stitch/Figma design handoff (user decision)** | routing shells, `StrategyState` TS types, SSE/WS clients, component shells |
+| **C — Dashboard visualization** | **After Block C data contracts exist** (and design handoff) | heatmaps, Monte Carlo bands, equity curves — rendered from real Block C payloads once contracts are frozen |
 
 **Guardrails** (prevent the frontend from running ahead of the API):
-1. Angular track is **infra-only until Block B endpoints exist**: no hard-coded business logic, no fake strategy semantics in components. Mock providers are explicitly labeled and swappable via token injection.
-2. `StrategyState` TS types are generated/vendor-synced from the Python pydantic schema (single source of truth, Block B Step 1 §State Schema).
-3. Visualization widgets are **shelved after the Block C contract freeze** (`ValidationReport`/`SurfaceSweepResult` shapes) — never built against guesswork.
-4. Each backend block ships a **contract-first OpenAPI update**; the Angular services track it so drift is caught by tests (see Testing Strategy ‑ API Contract).
+1. No frontend work at all until the user hands off Stitch/Figma designs.
+2. `StrategyState` TS types are generated/vendor-synced from the Python pydantic schema (single source of truth, Block B Step 1 §State Schema) — never hand-drifted.
+3. Visualization widgets are built only after the Block C contract freeze (`ValidationReport`/`SurfaceSweepResult` shapes) — never against guesswork.
+4. Each backend block ships a **contract-first OpenAPI update**; when frontend restarts, its services track it so drift is caught by tests (see Testing Strategy ‑ API Contract).
 
-**Why this is the right trade**: it front-loads the HITL interface (the actual product), keeps the backend contract the only authority, and avoids a giant "frontend month" at the end. Cost: disciplined scope control on track B (infra ≠ features).
+---
+
+## Port Coordination (3 active sessions, shared repo `yussef96795/Black_Box`)
+
+**Shared source of truth**: this `plan.md` (mirrored to `/home/_7oss/.opencode/plan/plan.md`). Always `git fetch` + update from `main` before starting new work; never commit another port's uncommitted files.
+
+| Session | Role | Scope / status |
+|---|---|---|
+| `ses_f45281638ffeaQ71eobzNxX0kA` | **plan.md owner + Block A implementer** | plan.md maintained; Block A complete (commits `9be5fee`, `7d207f2`, `b068a35`); CI workflow landed; next: uncontested backend work (contract-first), keeps plan.md + `.opencode/plan` mirrored |
+| `ses_f4501726affee6p7oFKTwmH5hh` | **Backend coordination** | coordinates ports; Block B deps staged in `backend/pyproject.toml` (uncommitted — do NOT commit); likely owns LangGraph state machine |
+| `ses_f45016b1cffe9r5F2v810pGS1X` | **Backend-only dashboard development** | Block D Step 2 backend aggregation — needs Block C contract freeze before consuming; build service skeleton against provisional contract, mark clearly |
+
+**Handoff conventions**:
+1. `git pull --rebase` origin/main before pushing; small, focused commits with conventional prefixes.
+2. Uncommitted foreign changes (e.g. `backend/pyproject.toml`) are left untouched.
+3. Block B state schema lives at `backend/src/black_box/state/schema.py` (only one port may own it — flag who takes it).
+4. Update `plan.md` ✅/⏳ marks when a block lands; push quickly so others see progress.
 
 ---
 
