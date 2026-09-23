@@ -323,8 +323,13 @@ class BlockAState(BaseModel):
         "gatekeeper",
         "complete",
         "rejected",
+        "llm_extraction_failed",
     ] = Field(default="running")
     error_code: str | None = None
+    #: Structured failure from a Stage A1/A4/A5 LLM call that exhausted its
+    #: validation retries — {stage, error_type, detail, trace_hash}. The full
+    #: traceback lives in the trace file (P3) / logs, never in the payload.
+    stage_error: dict[str, Any] | None = None
 
 
 class BlockAResult(BaseModel):
@@ -334,11 +339,19 @@ class BlockAResult(BaseModel):
 
     paper_id: str
     paper_title: str = ""
-    status: Literal["complete", "resource_insufficient", "rejected"]
+    status: Literal[
+        "complete",
+        "resource_insufficient",
+        "rejected",
+        "llm_extraction_failed",
+    ]
     specs: list[ExecutableStrategySpec] = Field(default_factory=list)
     risk_tags: list[RiskTag] = Field(default_factory=list)
     out_path: str | None = None
     error_code: str | None = None
+    #: {stage, error_type, detail, trace_hash} when an LLM stage exhausted its
+    #: retries (D2). Full stack trace is written to the trace file, not here.
+    error: dict[str, Any] | None = None
 
 
 __all__ = [

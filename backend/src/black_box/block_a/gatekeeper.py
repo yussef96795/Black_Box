@@ -83,6 +83,10 @@ def log_result(status: str, out_path: str | None = None) -> None:
         )
     elif status == "rejected":
         console.print("[red]✗ Rejected by gatekeeper — nothing emitted.[/red]")
+    elif status == "llm_extraction_failed":
+        console.print(
+            "[red]✗ LLM_EXTRACTION_FAILED — no specs emitted; see trace for stack.[/red]"
+        )
     else:
         console.print(
             "[red]✗ RESOURCE_INSUFFICIENT_ERROR — required data missing.[/red]"

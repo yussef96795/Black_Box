@@ -17,7 +17,9 @@ operator annotations carry zero deletion authority (No-Drop rule).
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import traceback
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -25,6 +27,12 @@ from typing import Any, Literal
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from pydantic import ValidationError
+
+try:  # instructor ≥1.6 canonical location; fall back for older pins
+    from instructor.core import InstructorRetryException
+except ImportError:  # pragma: no cover
+    from instructor.exceptions import InstructorRetryException  # type: ignore[no-redef]
 
 from black_box.block_a.catalog import check_catalog, ensure_catalog
 from black_box.block_a.gatekeeper import confirm_gatekeeper
@@ -50,6 +58,45 @@ logger = logging.getLogger(__name__)
 Parser = Callable[[str | Path], list[dict[str, Any]]]
 Gatekeeper = Callable[[BlockAState], Literal["complete", "rejected"]]
 
+#: Status literal routing an LLM failure edge to the terminal `llm_failed` node.
+LLM_FAILED_STATUS = "llm_extraction_failed"
+
+
+def _call_stage(stage: str, fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    """Run one LLM stage; convert exhausted-retry failures into state.
+
+    Catches the two recoverable failure classes — `InstructorRetryException`
+    (validation retries exhausted after `max_retries`) and `ValidationError`
+    (schema drift) — and surfaces them as a terminal `llm_extraction_failed`
+    state update carrying ``{stage, error_type, detail, trace_hash}``. The
+    full traceback goes to the logs (and the P3 trace file); only the hash
+    travels in the payload. Anything else propagates as an unexpected DAG
+    failure (CLI exit 1).
+    """
+    try:
+        return fn()
+    except (InstructorRetryException, ValidationError) as exc:
+        stack = traceback.format_exc()
+        logger.exception("LLM stage %s failed after retries", stage)
+        return {
+            "stage_error": {
+                "stage": stage,
+                "error_type": type(exc).__name__,
+                "detail": str(exc),
+                "trace_hash": hashlib.sha256(stack.encode("utf-8")).hexdigest()[:16],
+            },
+            "status": LLM_FAILED_STATUS,
+        }
+
+
+def _llm_router(next_node: str) -> Callable[[BlockAState], str]:
+    """Conditional-edge router: exhausted LLM retries → `llm_failed`, else on."""
+
+    def route(state: BlockAState) -> Literal["llm_failed", str]:
+        return "llm_failed" if state.status == LLM_FAILED_STATUS else next_node
+
+    return route
+
 
 def build_block_a_graph(
     *,
@@ -68,8 +115,14 @@ def build_block_a_graph(
         return {"chunks": chunks}
 
     def extract_requirements(state: BlockAState) -> dict[str, Any]:
-        extraction: PaperExtractionSchema = evaluator.extract_paper(state.chunks)
-        return {"extraction": extraction.model_dump(mode="json")}
+        return _call_stage(
+            "extract_requirements",
+            lambda: {
+                "extraction": evaluator.extract_paper(state.chunks).model_dump(
+                    mode="json"
+                )
+            },
+        )
 
     def check_resources(state: BlockAState) -> dict[str, Any]:
         extraction = PaperExtractionSchema.model_validate(state.extraction)
@@ -86,22 +139,31 @@ def build_block_a_graph(
         }
 
     def abstract_mechanism(state: BlockAState) -> dict[str, Any]:
-        extraction = PaperExtractionSchema.model_validate(state.extraction)
-        abstraction: CausalAbstractionSchema = evaluator.abstract_mechanism(
-            extraction, state.chunks
+        return _call_stage(
+            "abstract_mechanism",
+            lambda: {
+                "abstraction": evaluator.abstract_mechanism(
+                    PaperExtractionSchema.model_validate(state.extraction),
+                    state.chunks,
+                ).model_dump(mode="json")
+            },
         )
-        return {"abstraction": abstraction.model_dump(mode="json")}
 
     def apply_operators(state: BlockAState) -> dict[str, Any]:
-        extraction = PaperExtractionSchema.model_validate(state.extraction)
-        abstraction = CausalAbstractionSchema.model_validate(state.abstraction)
-        annotations: list[StrategyAnnotation] = evaluator.apply_operators(
-            extraction, abstraction, state.chunks
+        return _call_stage(
+            "apply_operators",
+            lambda: {
+                "annotations": [
+                    a.model_dump(mode="json")
+                    for a in evaluator.apply_operators(
+                        PaperExtractionSchema.model_validate(state.extraction),
+                        CausalAbstractionSchema.model_validate(state.abstraction),
+                        state.chunks,
+                    )
+                ],
+                "status": "gatekeeper",
+            },
         )
-        return {
-            "annotations": [a.model_dump(mode="json") for a in annotations],
-            "status": "gatekeeper",
-        }
 
     def compile_specs_node(state: BlockAState) -> dict[str, Any]:
         extraction = PaperExtractionSchema.model_validate(state.extraction)
@@ -142,6 +204,10 @@ def build_block_a_graph(
             return "abstract_mechanism"
         return "hard_stop"
 
+    def llm_failed(state: BlockAState) -> dict[str, Any]:
+        # Terminal: nothing further runs; partial results stay in state.
+        return {"specs": []}
+
     workflow = StateGraph(BlockAState)
     workflow.add_node("parse_document", parse_document)
     workflow.add_node("extract_requirements", extract_requirements)
@@ -149,16 +215,37 @@ def build_block_a_graph(
     workflow.add_node("hard_stop", hard_stop)
     workflow.add_node("abstract_mechanism", abstract_mechanism)
     workflow.add_node("apply_operators", apply_operators)
+    workflow.add_node("llm_failed", llm_failed)
     workflow.add_node("compile_specs", compile_specs_node)
     workflow.add_node("gatekeeper", gatekeeper_node)
 
     workflow.set_entry_point("parse_document")
     workflow.add_edge("parse_document", "extract_requirements")
-    workflow.add_edge("extract_requirements", "check_resources")
-    workflow.add_conditional_edges("check_resources", route_after_resource)
+    # After every LLM stage: exhausted retries → terminal `llm_failed`, else
+    # continue. Only the Stage A3 catalog check may hard-stop (it does NOT go
+    # through this router).
+    workflow.add_conditional_edges(
+        "extract_requirements",
+        _llm_router("check_resources"),
+        {"check_resources": "check_resources", "llm_failed": "llm_failed"},
+    )
+    workflow.add_conditional_edges(
+        "check_resources",
+        route_after_resource,
+        {"abstract_mechanism": "abstract_mechanism", "hard_stop": "hard_stop"},
+    )
+    workflow.add_conditional_edges(
+        "abstract_mechanism",
+        _llm_router("apply_operators"),
+        {"apply_operators": "apply_operators", "llm_failed": "llm_failed"},
+    )
+    workflow.add_conditional_edges(
+        "apply_operators",
+        _llm_router("compile_specs"),
+        {"compile_specs": "compile_specs", "llm_failed": "llm_failed"},
+    )
     workflow.add_edge("hard_stop", END)
-    workflow.add_edge("abstract_mechanism", "apply_operators")
-    workflow.add_edge("apply_operators", "compile_specs")
+    workflow.add_edge("llm_failed", END)
     workflow.add_edge("compile_specs", "gatekeeper")
     workflow.add_edge("gatekeeper", END)
 
@@ -244,6 +331,16 @@ class BlockAEngine:
                 paper_id=paper_id,
                 paper_title=title,
                 status="rejected",
+            )
+
+        if final.status == LLM_FAILED_STATUS:
+            # Partial results (e.g. extraction succeeded, A4 failed) remain in
+            # final state — nothing dropped; only the export is withheld.
+            return BlockAResult(
+                paper_id=paper_id,
+                paper_title=title,
+                status=LLM_FAILED_STATUS,
+                error=final.stage_error,
             )
 
         return BlockAResult(

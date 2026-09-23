@@ -7,6 +7,7 @@ Exit codes:
     1  unexpected pipeline failure
     2  RESOURCE_INSUFFICIENT_ERROR (hard Stage A3 data stop)
     3  paper could not be parsed
+    4  LLM_EXTRACTION_FAILED (a stage exhausted its validation retries)
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ EXIT_OK = 0
 EXIT_FAILURE = 1
 EXIT_RESOURCE_INSUFFICIENT = 2
 EXIT_UNPARSEABLE = 3
+EXIT_LLM_FAILED = 4
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -143,6 +145,14 @@ def main(argv: list[str] | None = None) -> int:
     log_result(result.status, result.out_path)
     if result.status == "resource_insufficient":
         return EXIT_RESOURCE_INSUFFICIENT
+    if result.status == "llm_extraction_failed":
+        err = result.error or {}
+        print(
+            "error: LLM_EXTRACTION_FAILED at stage "
+            f"{err.get('stage', '?')}: {err.get('detail', 'see trace file')}",
+            file=sys.stderr,
+        )
+        return EXIT_LLM_FAILED
     return EXIT_OK
 
 

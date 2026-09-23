@@ -5,8 +5,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from instructor.core import InstructorRetryException
+from pydantic import ValidationError
+
 from black_box.block_a.catalog import build_catalog
-from black_box.block_a.llm_evaluator import fake_evaluator
+from black_box.block_a.llm_evaluator import (
+    FakeInstructorClient,
+    LLMEvaluator,
+    fake_evaluator,
+)
 from black_box.block_a.models import (
     RESOURCE_INSUFFICIENT_ERROR,
     BlockAState,
@@ -57,6 +64,47 @@ def _graph(evaluator, catalog: Path, approve: bool = True):
         catalog_path=catalog,
         approve=approve,
     )
+
+
+class _FailingStageClient(FakeInstructorClient):
+    """Fake client that exhausts retries on exactly one stage (P2 error path)."""
+
+    def __init__(self, responses: dict, fail_on: type) -> None:
+        super().__init__(responses)
+        self.fail_on = fail_on
+
+    def create(self, response_model, messages, max_retries=3, **kwargs):
+        if response_model is self.fail_on:
+            if self.fail_on is OperatorAnnotations:
+                raise InstructorRetryException(
+                    "garbage output after 3 retries",
+                    n_attempts=3,
+                    total_usage={"total_tokens": 128},
+                )
+            raise ValidationError.from_exception_data(
+                "PaperExtractionSchema",
+                [
+                    {
+                        "type": "value_error",
+                        "loc": ("x",),
+                        "msg": "boom",
+                        "input": None,
+                        "ctx": {"error": ValueError("boom")},
+                    }
+                ],
+            )
+        return super().create(response_model, messages, max_retries, **kwargs)
+
+
+def _failing_evaluator(fail_on: type):
+    client = _FailingStageClient(
+        {
+            PaperExtractionSchema: vwap_extraction(),
+            CausalAbstractionSchema: vwap_abstraction(),
+        },
+        fail_on=fail_on,
+    )
+    return LLMEvaluator(client)
 
 
 def test_dag_complete_path(tmp_path: Path) -> None:
@@ -200,6 +248,74 @@ def test_engine_rejected_when_gatekeeper_vetoes(tmp_path: Path) -> None:
     result = engine.run("paper.md", approve=False, out_dir=tmp_path / "out_r")
     assert result.status == "rejected"
     assert result.out_path is None  # nothing emitted
+
+
+# --- P2: graceful LLM failure / DAG error states ----------------------------
+
+
+def test_dag_llm_failure_on_a5_ends_terminal_and_preserves_partials(
+    tmp_path: Path,
+) -> None:
+    """InstructorRetryException on Stage A5 → llm_extraction_failed, partials kept."""
+    catalog = build_catalog(tmp_path / "catalog.parquet", rows=CATALOG_ROWS)
+    graph = _graph(_failing_evaluator(OperatorAnnotations), catalog)
+    final = BlockAState.model_validate(
+        graph.invoke(
+            BlockAState(paper_id="p5", source_path="paper.md"),
+            config={"configurable": {"thread_id": "p5"}},
+        )
+    )
+    assert final.status == "llm_extraction_failed"
+    # Successfully completed stages are preserved — nothing dropped.
+    assert final.extraction is not None
+    assert final.abstraction is not None
+    assert final.annotations == []
+    assert final.specs == []
+    assert final.stage_error is not None
+    assert final.stage_error["stage"] == "apply_operators"
+    assert final.stage_error["error_type"] == "InstructorRetryException"
+    assert "3 retries" in final.stage_error["detail"]
+    assert len(final.stage_error["trace_hash"]) == 16
+
+
+def test_dag_llm_failure_on_a1_ends_terminal_early() -> None:
+    """Failure at the FIRST LLM stage still terminates with structured error."""
+    # catalog_path omitted: the A1 failure ends the run before Stage A3.
+    graph = _graph(_failing_evaluator(PaperExtractionSchema), None)
+    final = BlockAState.model_validate(
+        graph.invoke(
+            BlockAState(paper_id="p6", source_path="paper.md"),
+            config={"configurable": {"thread_id": "p6"}},
+        )
+    )
+    assert final.status == "llm_extraction_failed"
+    assert final.stage_error["stage"] == "extract_requirements"
+    assert final.stage_error["error_type"] == "ValidationError"
+    assert final.extraction is None
+    assert final.specs == []
+
+
+def test_engine_llm_failure_result_structured_error_and_no_export(
+    tmp_path: Path,
+) -> None:
+    """BlockAResult carries {stage, error_type, detail, trace_hash}; no export."""
+    catalog = build_catalog(tmp_path / "catalog.parquet", rows=CATALOG_ROWS)
+    engine = BlockAEngine(
+        evaluator=_failing_evaluator(OperatorAnnotations),
+        parser=lambda _p: _synthetic_chunks("x"),
+        catalog_path=catalog,
+    )
+    out = tmp_path / "out_llm"
+    result = engine.run("paper.md", approve=True, out_dir=out)
+    assert result.status == "llm_extraction_failed"
+    assert result.error is not None
+    assert result.error["stage"] == "apply_operators"
+    assert result.error["error_type"] == "InstructorRetryException"
+    assert set(result.error) == {"stage", "error_type", "detail", "trace_hash"}
+    # extraction succeeded, so the title is preserved in the result too
+    assert result.paper_title != ""
+    assert result.out_path is None
+    assert not (out / "block_a_specs.json").exists()
 
 
 def test_engine_integration_real_docling(tmp_path: Path) -> None:
