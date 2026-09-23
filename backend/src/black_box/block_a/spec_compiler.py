@@ -27,6 +27,9 @@ import polars as pl
 from black_box.block_a.models import (
     CausalAbstractionSchema,
     ExecutableStrategySpec,
+    GenericPrimitiveNode,
+    OperandNode,
+    OperatorNode,
     PaperExtractionSchema,
     ResourceVerdict,
     RiskTag,
@@ -37,6 +40,10 @@ from black_box.block_a.models import (
 logger = logging.getLogger(__name__)
 
 MAX_SPECS = 5
+
+#: OperandNode ids that need not be registry primitives: OHLCV data-series
+#: fields and bare numeric constants (e.g. an EMA window of 20).
+AST_DATA_SERIES = frozenset({"open", "high", "low", "close", "volume", "vwap"})
 
 DEFAULT_REGISTRY_PATH = (
     Path(__file__).resolve().parent / "config" / "primitives_registry.json"
@@ -226,6 +233,50 @@ def primary_guard_filter(annotations: list[StrategyAnnotation]) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# GenericPrimitiveNode helpers (Stage A6 AST)
+# ---------------------------------------------------------------------------
+
+
+def validate_ast_registry(
+    node: GenericPrimitiveNode, registry: dict[str, list[str]]
+) -> list[str]:
+    """Return primitive ids referenced by `node` that do NOT resolve.
+
+    Compile-time registry guard for the recursive AST: indicator operands
+    must name a registry indicator; transform/literal operands may also name
+    an OHLCV data series (``AST_DATA_SERIES``) or a bare numeric constant.
+    An empty list means the tree is fully resolvable. Deterministic, no LLM.
+    """
+    if isinstance(node, OperandNode):
+        allowed = set(registry["indicators"]) | AST_DATA_SERIES
+        if node.kind == "indicator":
+            return [] if node.id in set(registry["indicators"]) else [node.id]
+        if node.id in allowed or str(node.id).replace(".", "", 1).isdigit():
+            return []
+        return [node.id]
+    if isinstance(node, OperatorNode):
+        unresolved: list[str] = []
+        unresolved += validate_ast_registry(node.left, registry)
+        if node.right is not None:
+            unresolved += validate_ast_registry(node.right, registry)
+        return unresolved
+    return []  # DataStreamNode — no primitive ids
+
+
+def secondary_signal_ast(secondary: str) -> GenericPrimitiveNode:
+    """Tier 3 predictive-signal tree: `ZScore(<secondary indicator>)`.
+
+    The standardized secondary signal (e.g. IND_VOLUME_DELTA) — flat
+    `parameters.secondary_signal` remains the execution projection.
+    """
+    return OperatorNode(
+        kind="unary_op",
+        op="zscore",
+        left=OperandNode(kind="indicator", id=secondary),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Catalog helpers (Tier 2 generalization targets)
 # ---------------------------------------------------------------------------
 
@@ -369,6 +420,7 @@ def compile_specs(
                     "origin": "augmented_with_secondary_signal",
                     "secondary_signal": secondary,
                 },
+                signal_ast=secondary_signal_ast(secondary),
                 risk_annotations=tags,
                 causal_anchor_notes=anchor_notes,
             )
@@ -453,6 +505,7 @@ def validate_and_export(specs: list[ExecutableStrategySpec], out_path: Path) -> 
 
 
 __all__ = [
+    "AST_DATA_SERIES",
     "DEFAULT_REGISTRY_PATH",
     "MAX_SPECS",
     "RISK_GUARD_FILTERS",
@@ -464,5 +517,7 @@ __all__ = [
     "map_exit_primitive",
     "primary_guard_filter",
     "risk_union",
+    "secondary_signal_ast",
     "validate_and_export",
+    "validate_ast_registry",
 ]

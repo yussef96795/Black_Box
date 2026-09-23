@@ -16,13 +16,19 @@ Public entry points:
 """
 
 from black_box.block_a.models import (
+    AST_OPERATORS,
+    MAX_AST_DEPTH,
     RESOURCE_INSUFFICIENT_ERROR,
     BlockAResult,
     BlockAState,
     CausalAbstractionSchema,
     DataGranularity,
     DatasetRequirement,
+    DataStreamNode,
     ExecutableStrategySpec,
+    GenericPrimitiveNode,
+    OperandNode,
+    OperatorNode,
     PaperExtractionSchema,
     ResourceCheckResult,
     ResourceVerdict,
@@ -33,14 +39,20 @@ from black_box.block_a.models import (
 from black_box.block_a.workflow import BlockAEngine, build_block_a_graph
 
 __all__ = [
+    "AST_OPERATORS",
+    "MAX_AST_DEPTH",
     "RESOURCE_INSUFFICIENT_ERROR",
     "BlockAEngine",
     "BlockAResult",
     "BlockAState",
     "CausalAbstractionSchema",
     "DataGranularity",
+    "DataStreamNode",
     "DatasetRequirement",
     "ExecutableStrategySpec",
+    "GenericPrimitiveNode",
+    "OperandNode",
+    "OperatorNode",
     "PaperExtractionSchema",
     "ResourceCheckResult",
     "ResourceVerdict",

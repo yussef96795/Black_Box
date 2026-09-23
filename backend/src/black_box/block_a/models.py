@@ -17,9 +17,9 @@ Stage map:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 #: Hard-stop error code emitted when Stage A3 finds missing data + no proxy.
 RESOURCE_INSUFFICIENT_ERROR = "RESOURCE_INSUFFICIENT_ERROR"
@@ -143,6 +143,97 @@ class StrategyTier(str, Enum):
     TIER_3_AUGMENTED = "TIER_3_AUGMENTED"
 
 
+# ---------------------------------------------------------------------------
+# GenericPrimitiveNode — recursive DSL Abstract Syntax Tree (Stage A6)
+# ---------------------------------------------------------------------------
+#: Max nesting depth for `OperatorNode` trees (spec §4 Module 4). Deep trees
+#: exceed what a vectorized backtest engine can express as flat primitives —
+#: fail loudly instead of silently producing an un-expressible spec.
+MAX_AST_DEPTH = 8
+
+#: `op` values an OperatorNode may carry (deterministic, not LLM-extensible).
+AST_OPERATORS = (
+    "zscore",
+    "ema",
+    "sma",
+    "lag",
+    "returns",
+    "abs",
+    "log",
+    "ratio",
+    "add",
+    "sub",
+    "mul",
+    "div",
+)
+
+
+class DataStreamNode(BaseModel):
+    """Leaf: a raw symbol/granularity data stream (the AST input source)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["data_stream"] = "data_stream"
+    symbol: str
+    granularity: str
+
+
+class OperandNode(BaseModel):
+    """Leaf: a registry primitive, an OHLCV data series, or a numeric literal.
+
+    `id` resolution is enforced at compile time against the primitive
+    registry (see `spec_compiler.validate_ast_registry`) plus the allowed
+    data-series/literal escape hatches — unknown ids fail loudly.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["literal", "indicator", "transform"]
+    id: str
+
+
+class OperatorNode(BaseModel):
+    """Interior node: composes sub-trees (recursion point of the AST).
+
+    Strict by construction: `extra="forbid"`, `kind`/`op` are Literals, and a
+    `model_validator` enforces arity (binary requires `right`, unary forbids
+    it) and the `MAX_AST_DEPTH` ceiling so runaway nesting cannot pass.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["binary_op", "unary_op"]
+    op: Literal[*AST_OPERATORS]
+    left: GenericPrimitiveNode
+    right: GenericPrimitiveNode | None = None
+
+    @model_validator(mode="after")
+    def _enforce_arity_and_depth(self) -> OperatorNode:
+        if self.kind == "binary_op" and self.right is None:
+            raise ValueError("binary_op requires `right` operand")
+        if self.kind == "unary_op" and self.right is not None:
+            raise ValueError("unary_op forbids `right` operand")
+        if _node_depth(self) > MAX_AST_DEPTH:
+            raise ValueError(f"AST depth exceeds MAX_AST_DEPTH={MAX_AST_DEPTH}")
+        return self
+
+
+GenericPrimitiveNode = Annotated[
+    DataStreamNode | OperandNode | OperatorNode,
+    Field(discriminator="kind"),
+]
+
+
+def _node_depth(node: GenericPrimitiveNode) -> int:
+    if isinstance(node, (DataStreamNode, OperandNode)):
+        return 1
+    right = _node_depth(node.right) if node.right else 0
+    return 1 + max(_node_depth(node.left), right)
+
+
+OperatorNode.model_rebuild()
+
+
 class ExecutableStrategySpec(BaseModel):
     """Final Block B/C/D export contract (Stage A6 + Module 5 output)."""
 
@@ -161,6 +252,12 @@ class ExecutableStrategySpec(BaseModel):
         default_factory=dict,
         description="Static/Dynamic parameter bounds for Block B/C",
     )
+
+    # Optional recursive expression tree backing the headline signal (e.g.
+    # ZScore(EMA(close, 20))). Flat primitive fields above remain the
+    # vectorized-execution boundary contract; `signal_ast` is the expressive
+    # layer Block C/D may consume. None unless the compiler emits one.
+    signal_ast: GenericPrimitiveNode | None = None
 
     # Annotations passed to Block C validation suite
     risk_annotations: list[RiskTag] = Field(default_factory=list)
@@ -245,14 +342,20 @@ class BlockAResult(BaseModel):
 
 
 __all__ = [
+    "AST_OPERATORS",
+    "MAX_AST_DEPTH",
     "RESOURCE_INSUFFICIENT_ERROR",
     "BlockAResult",
     "BlockAState",
     "CausalAbstractionSchema",
     "DataGranularity",
+    "DataStreamNode",
     "DatasetRequirement",
     "ExecutableStrategySpec",
+    "GenericPrimitiveNode",
+    "OperandNode",
     "OperatorAnnotations",
+    "OperatorNode",
     "PaperExtractionSchema",
     "ResourceCheckResult",
     "ResourceVerdict",
