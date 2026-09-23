@@ -52,6 +52,7 @@ from black_box.block_a.spec_compiler import (
     compile_specs,
     validate_and_export,
 )
+from black_box.block_a.traces import TraceWriter
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +296,8 @@ class BlockAEngine:
         )
 
         paper_id = uuid.uuid4().hex
+        writer = _trace_writer_for(paper_id, out_dir)
+        evaluator.set_trace(writer, paper_id)
         initial = BlockAState(
             paper_id=paper_id,
             source_path=str(paper_path),
@@ -355,6 +358,24 @@ def _default_out_dir() -> Path:
     from black_box.core.config import get_settings
 
     return get_settings().block_a_out_dir
+
+
+def _trace_writer_for(paper_id: str, out_dir: str | Path | None) -> TraceWriter | None:
+    """Per-run trace writer, or None when tracing is disabled (D3).
+
+    With an explicit run `out_dir`, traces go to ``<out_dir>/traces/``; with
+    the default settings they land in `block_a_trace_dir`. Default off keeps
+    tests hermetic — no writer, no directory, no files.
+    """
+    from black_box.core.config import get_settings
+
+    settings = get_settings()
+    if not settings.block_a_trace_enabled:
+        return None
+    trace_dir = (
+        Path(out_dir) / "traces" if out_dir is not None else settings.block_a_trace_dir
+    )
+    return TraceWriter(trace_dir / f"{paper_id}.jsonl")
 
 
 __all__ = ["BlockAEngine", "build_block_a_graph"]

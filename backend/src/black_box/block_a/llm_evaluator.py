@@ -24,7 +24,10 @@ Backends:
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import traceback
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from black_box.block_a.models import (
@@ -34,12 +37,17 @@ from black_box.block_a.models import (
     StrategyAnnotation,
 )
 from black_box.block_a.operators import operator_prompt_block
+from black_box.block_a.traces import TraceWriter, json_safe
 from black_box.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 #: Chunk text cap per prompt so local models stay within context cheaply.
 MAX_CHUNK_CHARS = 12_000
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 class StructuredClient(Protocol):
@@ -118,23 +126,156 @@ class LLMEvaluator:
         *,
         model: str | None = None,
         max_retries: int = 3,
+        trace: TraceWriter | None = None,
+        paper_id: str | None = None,
     ) -> None:
         self._client = client
         self.model = model
         self.max_retries = max_retries
+        #: P3 observability — None keeps runs hermetic (D3).
+        self.trace: TraceWriter | None = trace
+        self.paper_id: str | None = paper_id
+        #: Raw completions observed during the current `_create` (retries).
+        self._attempts = 0
+        # Real Instructor clients expose event hooks; the fake client does
+        # not, so `getattr` keeps the StructuredClient protocol untouched and
+        # trace hooks no-op until `set_trace` supplies a writer.
+        on = getattr(client, "on", None)
+        if on is not None:
+            on("completion:response", self._on_raw_response)
+            on("completion:usage", self._on_usage)
+            on("completion:error", self._on_raw_error)
+            on("completion:last_attempt", self._on_raw_last_attempt)
+
+    def set_trace(self, trace: TraceWriter | None, paper_id: str | None) -> None:
+        """Bind a per-run trace writer + paper id (called by the engine).
+
+        Passing ``(None, None)`` detaches tracing (statelessness: a fresh
+        writer per paper, nothing leaks between runs).
+        """
+        self.trace = trace
+        self.paper_id = paper_id
+
+    # -- trace hooks (instructor event API; no-op when tracing is off) -------
+
+    def _trace_event(self, name: str, **payload: Any) -> None:
+        if self.trace is None:
+            return
+        self.trace.write(
+            {
+                "event": name,
+                "ts": _now(),
+                "paper_id": self.paper_id,
+                **payload,
+            }
+        )
+
+    def _on_raw_response(self, response: Any) -> None:
+        self._attempts += 1
+        self._trace_event(
+            "raw_response",
+            attempt=self._attempts,
+            response=json_safe(response),
+        )
+
+    def _on_usage(self, usage: Any, *, attempt_number: int = 1) -> None:
+        self._trace_event("usage", attempt=attempt_number, usage=json_safe(usage))
+
+    def _on_raw_error(
+        self,
+        error: Exception,
+        *,
+        attempt_number: int = 1,
+        max_attempts: int | None = None,
+        is_last_attempt: bool = False,
+    ) -> None:
+        self._trace_event(
+            "raw_error",
+            attempt=attempt_number,
+            max_attempts=max_attempts,
+            is_last_attempt=is_last_attempt,
+            error_type=type(error).__name__,
+            detail=str(error),
+        )
+
+    def _on_raw_last_attempt(
+        self,
+        error: Exception,
+        *,
+        attempt_number: int = 1,
+        max_attempts: int | None = None,
+        is_last_attempt: bool = False,
+    ) -> None:
+        self._trace_event(
+            "last_attempt",
+            attempt=attempt_number,
+            max_attempts=max_attempts,
+            error_type=type(error).__name__,
+            detail=str(error),
+        )
 
     # -- primitives ---------------------------------------------------------
 
-    def _create(self, response_model: type[Any], prompt: str) -> Any:
+    def _create(
+        self,
+        response_model: type[Any],
+        prompt: str,
+        *,
+        stage: str | None = None,
+    ) -> Any:
+        if self.trace is not None:
+            self.trace.write(
+                {
+                    "event": "request",
+                    "ts": _now(),
+                    "paper_id": self.paper_id,
+                    "stage": stage,
+                    "model": self.model,
+                    "prompt_chars": len(prompt),
+                    "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest()[
+                        :16
+                    ],
+                }
+            )
+        self._attempts = 0
         kwargs: dict[str, Any] = {}
         if self.model:
             kwargs["model"] = self.model
-        return self._client.create(
-            response_model=response_model,
-            messages=[{"role": "user", "content": prompt}],
-            max_retries=self.max_retries,
-            **kwargs,
-        )
+        try:
+            result = self._client.create(
+                response_model=response_model,
+                messages=[{"role": "user", "content": prompt}],
+                max_retries=self.max_retries,
+                **kwargs,
+            )
+        except Exception as exc:
+            if self.trace is not None:
+                self.trace.write(
+                    {
+                        "event": "error",
+                        "ts": _now(),
+                        "paper_id": self.paper_id,
+                        "stage": stage,
+                        "model": self.model,
+                        "error_type": type(exc).__name__,
+                        "detail": str(exc),
+                        "trace": traceback.format_exc(),
+                    }
+                )
+            raise
+        if self.trace is not None:
+            self.trace.write(
+                {
+                    "event": "response",
+                    "ts": _now(),
+                    "paper_id": self.paper_id,
+                    "stage": stage,
+                    "model": self.model,
+                    "final_model": json_safe(result),
+                    "attempts": self._attempts,
+                }
+            )
+        return result
 
     @staticmethod
     def _join_chunks(chunks: list[dict[str, Any]]) -> str:
@@ -178,7 +319,7 @@ class LLMEvaluator:
             "rule, and sizing rule.\n\n"
             f"Paper chunks:\n{self._join_chunks(chunks)}"
         )
-        return self._create(PaperExtractionSchema, prompt)
+        return self._create(PaperExtractionSchema, prompt, stage="extract_requirements")
 
     def abstract_mechanism(
         self,
@@ -201,7 +342,7 @@ class LLMEvaluator:
             f"Core mechanism: {extraction.core_mechanism}\n\n"
             f"Paper chunks:\n{self._join_chunks(chunks)}"
         )
-        return self._create(CausalAbstractionSchema, prompt)
+        return self._create(CausalAbstractionSchema, prompt, stage="abstract_mechanism")
 
     def apply_operators(
         self,
@@ -232,7 +373,9 @@ class LLMEvaluator:
             f"Invariants: {', '.join(abstraction.non_negotiable_invariants)}\n\n"
             f"Paper chunks:\n{self._join_chunks(chunks)}"
         )
-        wrapped: OperatorAnnotations = self._create(OperatorAnnotations, prompt)
+        wrapped: OperatorAnnotations = self._create(
+            OperatorAnnotations, prompt, stage="apply_operators"
+        )
         return wrapped.annotations
 
 

@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     )
     #: Output directory for the validated spec matrix (block_a_specs.json).
     block_a_out_dir: Path = Path("out")
+    #: P3 observability — JSONL prompt/response traces per paper. Off by
+    #: default so tests are hermetic (D3); enabled with BLOCK_A_TRACE_ENABLED.
+    block_a_trace_enabled: bool = False
+    #: Directory for per-paper trace files (`<paper_id>.jsonl`) when tracing
+    #: is on and the run supplies no explicit `--out` directory.
+    block_a_trace_dir: Path = Path("out/traces")
 
     @property
     def allowed_format_list(self) -> list[str]:

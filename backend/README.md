@@ -38,7 +38,7 @@ uv run python -m black_box.block_a.cli tests/fixtures/block_a/vwap_trend.md --ll
 uv run python -m black_box.block_a.cli paper.pdf
 ```
 
-Exit codes: `0` complete · `1` unexpected failure · `2` RESOURCE_INSUFFICIENT (hard Stage A3 data stop) · `3` unparseable paper.
+Exit codes: `0` complete · `1` unexpected failure · `2` RESOURCE_INSUFFICIENT (hard Stage A3 data stop) · `3` unparseable paper · `4` LLM_EXTRACTION_FAILED (a stage exhausted its validation retries).
 
 ## Smoke test
 
@@ -78,6 +78,8 @@ curl -s localhost:8000/api/v1/feasibility/capabilities
 - `BLOCK_A_MAX_RETRIES` — Instructor Pydantic retry cap, max 3 per spec
 - `BLOCK_A_CONFIG_DIR` — `primitives_registry.json` + `data_catalog.parquet` (defaults to packaged seed catalog)
 - `BLOCK_A_OUT_DIR` — output dir for `block_a_specs.json` (default `out`)
+- `BLOCK_A_TRACE_ENABLED` — JSONL prompt/response traces per paper, off by default (set `true` to debug)
+- `BLOCK_A_TRACE_DIR` — trace dir for runs without an explicit `--out` (default `out/traces`)
 
 The seed catalog (`src/black_box/block_a/config/data_catalog.parquet`) covers
 BTC/ETH/SOL L2+orderflow and ADA/DOGE OHLCV rows across tick/1m/1h/1d from
