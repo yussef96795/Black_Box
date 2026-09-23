@@ -23,6 +23,7 @@ LLM-assisted extraction, but the decision rules and contracts stay identical.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal
 
 from black_box.schemas import (
@@ -128,12 +129,29 @@ def _mentions(text: str, terms: list[str]) -> list[str]:
     return [t for t in terms if t in lowered]
 
 
-def audit_dependencies(text: str) -> list[DataDependency]:
-    """Detect referenced data sources and granularity vs the contract."""
+def audit_dependencies(
+    text: str, catalog_path: Path | None = None
+) -> list[DataDependency]:
+    """Detect referenced data sources and granularity vs the contract.
+
+    When a DuckDB catalog (`config/data_catalog.parquet`) is supplied, the
+    granularity verdicts resolve against the ACTUAL catalog contents (Stage
+    A3 authority): a demand is satisfied iff the catalog holds that
+    granularity. Without a catalog (legacy/unit call), the static capability
+    table is used so behavior remains backwards compatible.
+    """
     found: dict[str, str] = {}
     for provider, kind in DATA_PROVIDERS.items():
         if provider.lower() in text.lower():
             found[provider] = kind
+
+    supported: set[str] = SUPPORTED_GRANULARITIES
+    if catalog_path is not None and Path(catalog_path).exists():
+        from black_box.block_a.catalog import granularities_available
+
+        available = granularities_available(catalog_path)
+        if available:
+            supported = _map_catalog_granularities(available)
 
     dependencies: list[DataDependency] = []
     lowered = text.lower()
@@ -179,14 +197,35 @@ def audit_dependencies(text: str) -> list[DataDependency]:
             dependencies.append(
                 DataDependency(
                     name=f"granularity:{granularity}",
-                    status="satisfied"
-                    if granularity in SUPPORTED_GRANULARITIES
-                    else "missing",
+                    status="satisfied" if granularity in supported else "missing",
                     latency_ms=None,
-                    evidence=f"document demands '{hint}' ({granularity})",
+                    evidence=(
+                        f"document demands '{hint}' ({granularity}); "
+                        f"catalog granularities: {sorted(supported)}"
+                    ),
                 )
             )
     return dependencies
+
+
+def _map_catalog_granularities(available: set[str]) -> set[str]:
+    """Translate catalog granularity strings to capability-table labels.
+
+    "tick" rows imply orderbook + L3 labels too (the catalog stores L2/L3
+    book presence as a boolean column; granularity-level demands for
+    orderbook still mean "tick data exists").
+    """
+    mapping = {
+        "tick": {"tick (L3)", "orderbook", "L3"},
+        "1s": {"1s"},
+        "1m": {"1m"},
+        "1h": {"1h"},
+        "1d": {"daily"},
+    }
+    resolved: set[str] = set()
+    for g in available:
+        resolved.update(mapping.get(g, set()))
+    return resolved
 
 
 def audit_compute(text: str) -> tuple[list[ModelCheck], dict[str, Any]]:
@@ -241,16 +280,27 @@ def _check_tables(
 
 
 def audit(
-    text: str, tables: list[TableValidationReport] | None = None
+    text: str,
+    tables: list[TableValidationReport] | None = None,
+    catalog_path: Path | None = None,
 ) -> FeasibilityResult:
-    """Run all checkers in sequence and aggregate the verdict."""
+    """Run all checkers in sequence and aggregate the verdict.
+
+    Args:
+        text: Strategy specification text to audit.
+        tables: Optional 1d table-validation reports.
+        catalog_path: Optional DuckDB data catalog; when provided the
+            `hard_dependencies` checker resolves granularity demands against
+            the ACTUAL catalog contents (Block A Stage A3 authority) instead
+            of the static capability table.
+    """
     text = (text or "").strip()
     tables = tables or []
 
     checks: list[FeasibilityCheck] = []
 
     # 1. hard dependencies
-    dependencies = audit_dependencies(text)
+    dependencies = audit_dependencies(text, catalog_path=catalog_path)
     dep_statuses = {d.status for d in dependencies}
     if "missing" in dep_statuses:
         dep_verdict: Literal["PASSED", "REQUIRES_HITL", "REJECTED"] = "REJECTED"

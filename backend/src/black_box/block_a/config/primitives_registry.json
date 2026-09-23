@@ -1,0 +1,20 @@
+{
+  "description": "Allowed primitive vocabulary for Block A Stage A6 (DSL registry).",
+  "version": "1.0.0",
+  "triggers": [
+    "TRIGGER_CROSS_ABOVE",
+    "TRIGGER_CROSS_BELOW",
+    "TRIGGER_BAND_BREAKOUT"
+  ],
+  "indicators": [
+    "IND_VWAP",
+    "IND_EMA",
+    "IND_ATR",
+    "IND_VOLUME_DELTA"
+  ],
+  "filters": [
+    "FLT_TIME_OF_DAY",
+    "FLT_VOLATILITY_THRESHOLD",
+    "FLT_VOLUME_RATIO"
+  ]
+}

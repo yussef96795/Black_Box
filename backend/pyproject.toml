@@ -10,12 +10,16 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic",
     "docling[charts,pdf]>=2.129.0",
+    "duckdb>=1.5.5",
     "fastapi>=0.141.1",
+    "instructor>=1.17.0",
     "langchain-core",
     "langgraph",
+    "polars>=1.44.2",
     "psycopg2-binary",
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
+    "rich>=14.3.4",
     "uvicorn>=0.53.0",
 ]
 

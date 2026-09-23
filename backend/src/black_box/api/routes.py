@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from black_box.core.capabilities import DEFAULT_CAPABILITIES, Capabilities
+from black_box.core.config import get_settings
 from black_box.schemas import (
     FeasibilityAuditRequest,
     FeasibilityResult,
@@ -86,4 +87,9 @@ async def audit_feasibility(request: FeasibilityAuditRequest) -> FeasibilityResu
             status_code=_UNPROCESSABLE,
             detail="Request 'text' must be non-empty.",
         )
-    return audit(request.text, request.tables)
+    # Granularity demands resolve against the Block A data catalog (Stage A3
+    # authority) when present; otherwise fall back to the static capability
+    # table. The endpoint path/contract is unchanged (integration wiring).
+    settings = get_settings()
+    catalog = settings.block_a_config_dir / "data_catalog.parquet"
+    return audit(request.text, request.tables, catalog_path=catalog)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -36,7 +37,28 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Database (Block B+ state checkpointing)
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/black_box"
+    database_url: str = (
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/black_box"
+    )
+
+    # ------------------------------------------------------------------
+    # Block A — Alpha Feasibility & Strategy Ingestion Engine
+    # ------------------------------------------------------------------
+    #: LLM backend: "ollama" (local, default) | "fake" (deterministic tests).
+    block_a_llm_backend: Literal["ollama", "fake"] = "ollama"
+    #: Ollama model used by Stage A1–A5 structured extraction (override via
+    #: OLLAMA_MODEL — surfaced as BLOCK_A_OLLAMA_MODEL to avoid clobbering the
+    #: model already pulled by the local server config).
+    block_a_ollama_model: str = "llama3.2"
+    block_a_ollama_base_url: str = "http://localhost:11434/v1"
+    #: Instructor Pydantic validation retries (spec §6 item 3: max 3).
+    block_a_max_retries: int = 3
+    #: Directory holding primitives_registry.json + data_catalog.parquet.
+    block_a_config_dir: Path = (
+        Path(__file__).resolve().parent.parent / "block_a" / "config"
+    )
+    #: Output directory for the validated spec matrix (block_a_specs.json).
+    block_a_out_dir: Path = Path("out")
 
     @property
     def allowed_format_list(self) -> list[str]:

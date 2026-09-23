@@ -7,10 +7,11 @@
 
 ---
 
-## Current Status (Block A complete)
+## Current Status (Block A complete + Alpha engine implemented)
 
 ### ✅ Finished
 - **Git repo**: public repo `yussef96795/Black_Box` on `main`; baseline `d244c73` + commits `9be5fee`, `7d207f2`, `b068a35` (Block A complete). No secrets in tree (`.env` gitignored).
+- **Block A Alpha engine (Stages A1–A6)** — LLM extraction → catalog hard-stop → 8-operator sweep → DSL compiler → human gatekeeper → `out/block_a_specs.json` (see Step 3, section below). 57 Block A tests; full suite 101 passing; real-Ollama live run emits 4 validated specs.
 - **Boot + smoke test** — uvicorn boots clean; `GET /health` → `{"service":"Black_Box","version":"0.1.0","docling":"ready"}`; markdown strategy doc → 201 with 5 heading-provenanced chunks; garbage PDF → 422.
 - **DoclingService ownership resolved** (SRP): `get_docling_service` now serves the lifespan-managed instance via `request.app.state.docling`; module-level `_ServiceHolder` singleton dropped. Single owner per worker.
 - **Real HybridChunker semantic chunking** landed with the **installed Docling 2.129.0 API** (supersedes earlier plan claims):
@@ -161,6 +162,27 @@
 **Dependencies**: Block A Step 1 (full pipeline) stable — required, and satisfied.
 
 ---
+
+## Step 3: Alpha Feasibility & Strategy Ingestion Engine (Stages A1–A6) — ✅ DONE
+
+Implements the Alpha engine per `BLOCK_A_SPECIFICATION.md`: LLM-driven mechanism
+extraction bound to Pydantic v2 via Instructor, DuckDB/polars resource-catalog
+checks, an annotations-only 8-operator sweep (zero deletion authority), a DSL
+spec compiler (≤5 pruned specs, Tiers 0–3), a human gatekeeper, emitting a
+validated `ExecutableStrategySpec` JSON array to `/out/block_a_specs.json`.
+
+- [x] **Schema-first LLM contract** — every stage binds to Pydantic v2 via Instructor (`extra="forbid"` everywhere): `PaperExtractionSchema` (A1–A2), `CausalAbstractionSchema` (A4), `OperatorAnnotations` (A5, `min_length=8`). Local Ollama via `instructor.from_provider("ollama/<model>", mode=Mode.JSON_SCHEMA)`; `max_retries` on `create` only (spec §6: max 3), verified hermetic via `from_openai(OpenAI(http_client=MockTransport…))`.
+- [x] **Stage A3 data catalog** — `catalog.py` + packaged `data_catalog.parquet` (18-row seed: BTC/ETH/SOL full L2+orderflow tick/1m/1h/1d from 2020; ADA/DOGE OHLCV-only from 2021); DuckDB/polars `check_catalog` with L2→`volume_delta:1m` proxy rule; **hard-stop authority** for Stage A5 emission (incomplete data → `RESOURCE_INSUFFICIENT_ERROR`, no specs emitted). Catalog is authoritative for `asset_class` in verdicts.
+- [x] **Stage A5 operator sweep (no-drop)** — annotations-only; `StrategyAnnotation` has no `is_testable` field; the compiler never emits when the anchor dataset is unverified (structural no-drop mirror of the hard stop).
+- [x] **Stage A6 DSL spec compiler** — `spec_compiler.py`: primitives registry (`triggers/indicators/risk_filters`), ≤5 pruned specs across `TIER_0_LITERAL` / `TIER_1_PARAMETRIC` / `TIER_2_GENERALIZED` / `TIER_3_AUGMENTED`, `is_testable` set only by data-resource position; `validate_and_export` writes `block_a_specs.json`.
+- [x] **Human gatekeeper + CLI** — `gatekeeper.py` rich review (per-spec approve/reject), `cli.py` exit codes 0/1/2/3, `--llm fake` for CI, sync Docling parser.
+- [x] **Stateless processing** — fresh LangGraph graph + MemorySaver per run (no cross-paper leakage; tested with unique paper markers); `ui = llm evaluator` recorded call counts assert exactly 3 fresh calls per run.
+- [x] **Test suite (57 Block A tests)** — catalog, models, LLM/evaluator (incl. hermetic Instructor retry loop), compiler, DAG (hard-stop QQQ path, gatekeeper veto, real Docling integration, stateless isolation), CLI. Full suite 101 passed; ruff lint + format clean on all touched files.
+- [x] **Live-verified** — real Ollama (llama3.2 3B) run on `tests/fixtures/block_a/vwap_trend.md` emits 4 specs (T0/T1 BTCUSDT, T2 ETHUSDT, T3 BTCUSDT) with exit 0. `Mode.JSON_SCHEMA` (structured output with the actual Pydantic schema) was required for small-model compliance; `Mode.JSON` double-encodes arrays on the 3B model.
+- [x] **Feasibility auditor integration** — granularity authority rewired from the static capability table to the DuckDB catalog (`audit(..., catalog_path=…)`, graceful fallback keeps existing contract/tests green).
+- [x] **Deployments/config** — 6 new `BLOCK_A_*` settings in `core/config.py` + `.env.example`; deps `instructor 1.17.0`, `duckdb 1.5.5`, `polars 1.44.2`, `rich 14.3.4` via `uv add`; lockfile updated.
+
+**Acceptance Criteria (met)**: zero raw-text output (all LLM stages schema-bound); stateless isolation across papers; retry loop ≤3 (hermetic test: garbage-forever raises `InstructorRetryException` after 3 attempts); export format validated array; no-drop semantics enforced structurally and via the A3 hard stop.
 
 ## Parallel Tracks: Dashboard Sequencing (critical review finding)
 
