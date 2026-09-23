@@ -354,6 +354,21 @@ class BlockAResult(BaseModel):
     error: dict[str, Any] | None = None
 
 
+class GatekeeperDecision(BaseModel):
+    """Module 5 outcome — status plus the human-curated spec array (D4).
+
+    `specs` is the filtered/edited list the DAG writes back into
+    `BlockAState.specs`, so only curated specs reach `validate_and_export`.
+    Full rejection carries an empty array; `approve=True` an idealized
+    decision carrying every compiled spec.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["complete", "rejected"]
+    specs: list[ExecutableStrategySpec] = Field(default_factory=list)
+
+
 __all__ = [
     "AST_OPERATORS",
     "MAX_AST_DEPTH",
@@ -365,6 +380,7 @@ __all__ = [
     "DataStreamNode",
     "DatasetRequirement",
     "ExecutableStrategySpec",
+    "GatekeeperDecision",
     "GenericPrimitiveNode",
     "OperandNode",
     "OperatorAnnotations",

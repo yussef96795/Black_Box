@@ -43,6 +43,7 @@ from black_box.block_a.models import (
     BlockAState,
     CausalAbstractionSchema,
     ExecutableStrategySpec,
+    GatekeeperDecision,
     PaperExtractionSchema,
     ResourceCheckResult,
     StrategyAnnotation,
@@ -57,7 +58,9 @@ from black_box.block_a.traces import TraceWriter
 logger = logging.getLogger(__name__)
 
 Parser = Callable[[str | Path], list[dict[str, Any]]]
-Gatekeeper = Callable[[BlockAState], Literal["complete", "rejected"]]
+#: D4: a gatekeeper returns a decision (status + curated specs), not a bare
+#: verdict — per-spec selection affects emission.
+Gatekeeper = Callable[[BlockAState], GatekeeperDecision]
 
 #: Status literal routing an LLM failure edge to the terminal `llm_failed` node.
 LLM_FAILED_STATUS = "llm_extraction_failed"
@@ -188,12 +191,21 @@ def build_block_a_graph(
     def gatekeeper_node(state: BlockAState) -> dict[str, Any]:
         decide: Gatekeeper = confirm_gatekeeper
         if approve is True:
-            decide = lambda _s: "complete"
+            decide = lambda _s: GatekeeperDecision(
+                status="complete",
+                specs=[ExecutableStrategySpec.model_validate(s) for s in state.specs],
+            )
         elif approve is False:
-            decide = lambda _s: "rejected"
+            decide = lambda _s: GatekeeperDecision(status="rejected", specs=[])
         elif gatekeeper is not None:
             decide = gatekeeper
-        return {"status": decide(state)}
+        decision = decide(state)
+        # D4: write the curated array back into state so only approved (and
+        # risk-edited) specs reach validate_and_export.
+        return {
+            "status": decision.status,
+            "specs": [s.model_dump(mode="json") for s in decision.specs],
+        }
 
     def route_after_resource(
         state: BlockAState,
