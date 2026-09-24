@@ -21,6 +21,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from black_box.block_a.operators import OPERATOR_NAMES
+
 #: Hard-stop error code emitted when Stage A3 finds missing data + no proxy.
 RESOURCE_INSUFFICIENT_ERROR = "RESOURCE_INSUFFICIENT_ERROR"
 
@@ -37,12 +39,21 @@ class DataGranularity(str, Enum):
     DAILY = "1d"
 
 
+class AssetClass(str, Enum):
+    """Asset classes a dataset requirement may name (spec §4 Module 2)."""
+
+    EQUITIES = "Equities"
+    CRYPTO = "Crypto"
+    FUTURES = "Futures"
+    FOREX = "Forex"
+
+
 class DatasetRequirement(BaseModel):
     """One explicit data requirement extracted from the paper (Stage A1/A2)."""
 
     model_config = ConfigDict(extra="forbid")
 
-    asset_class: str = Field(..., description="Equities, Crypto, Futures, Forex")
+    asset_class: AssetClass = Field(..., description="Equities, Crypto, Futures, Forex")
     symbol: str = Field(..., description="Target symbol e.g., QQQ, NQ, BTCUSDT")
     required_granularity: DataGranularity
     requires_l2_book: bool = Field(default=False)
@@ -126,16 +137,7 @@ class StrategyAnnotation(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    operator_name: Literal[
-        "Restrict",
-        "Invert",
-        "Relax",
-        "Substitute",
-        "Decompose",
-        "Combine",
-        "Adversarial",
-        "Generalize",
-    ]
+    operator_name: Literal[*OPERATOR_NAMES]
     observation: str
     proposed_modification: str
     risk_tags: list[RiskTag] = Field(default_factory=list)
@@ -194,7 +196,7 @@ class DataStreamNode(BaseModel):
 
     kind: Literal["data_stream"] = "data_stream"
     symbol: str
-    granularity: str
+    granularity: DataGranularity
 
 
 class OperandNode(BaseModel):

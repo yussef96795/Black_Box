@@ -31,9 +31,12 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from black_box.block_a.models import (
+    AssetClass,
     CausalAbstractionSchema,
+    DataGranularity,
     OperatorAnnotations,
     PaperExtractionSchema,
+    RiskTag,
     StrategyAnnotation,
 )
 from black_box.block_a.operators import operator_prompt_block
@@ -299,17 +302,19 @@ class LLMEvaluator:
 
     def extract_paper(self, chunks: list[dict[str, Any]]) -> PaperExtractionSchema:
         """Stage A1–A2: explicit datasets + core mechanism."""
+        asset_classes = ", ".join(c.value for c in AssetClass)
+        granularities = ", ".join(g.value for g in DataGranularity)
         prompt = (
             "You extract quantitative research specifications. From the paper "
             "chunks below, produce:\n"
             "- paper_title: the paper's title or a short identifier\n"
             "- primary_hypothesis: the core market claim in one sentence\n"
             "- datasets_used: every EXPLICIT data requirement — asset_class "
-            "strictly one of {Equities, Crypto, Futures, Forex}. INFER IT FROM "
+            f"strictly one of {{{asset_classes}}}. INFER IT FROM "
             "THE SYMBOL: symbols ending in USDT/USDC, or BTC/ETH/SOL/ADA/DOGE "
             "perpetuals, are 'Crypto'; QQQ/SPY/NQ index futures are "
             "'Equities'/'Futures'. symbol in UPPERCASE (e.g. BTCUSDT, QQQ); "
-            "required_granularity one of {tick, 1s, 1m, 5m, 15m, 1h, 1d}; "
+            f"required_granularity one of {{{granularities}}}; "
             "requires_l2_book TRUE only when the paper demands order book / "
             "L2/L3 depth; requires_order_flow TRUE only when the paper "
             "explicitly demands order flow / flow imbalance data (funding "
@@ -362,8 +367,7 @@ class LLMEvaluator:
             "operator (no more, no less). For each: observation (what the "
             "operator reveals), proposed_modification (concrete, implementable "
             "change), risk_tags (0..n from "
-            "HIGH_SESSION_SENSITIVITY, LOW_LIQUIDITY_FRAGILITY, "
-            "PARAMETRIC_OVERFIT_RISK, EXECUTION_SLIPPAGE_HEAVY).\n\n"
+            f"{', '.join(t.value for t in RiskTag)}).\n\n"
             "IMPORTANT: annotations are advisory only — never a recommendation "
             "to discard the strategy.\n\n"
             f"{operator_prompt_block()}\n\n"
