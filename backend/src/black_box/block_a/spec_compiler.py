@@ -127,6 +127,13 @@ _TIMEFRAME_RE = re.compile(
     r"(?i)\b(\d+)\s*(?:-|\s)?(minutes?|mins?|m|hours?|hrs?|h|days?|d)\b"
 )
 
+#: First exit-clause marker — partitions the mechanism into per-clause
+#: regions so entry phrases in the exit clause cannot leak into the entry
+#: mapping (and vice versa). Deterministic: first marker wins.
+_EXIT_MARKER_RE = re.compile(
+    r"(?i)\b(?:exit(?:s|ing)?|stop[\s-]?loss|trailing stop|take[\s-]?profit)\b"
+)
+
 _TIER_ORDER: tuple[StrategyTier, ...] = (
     StrategyTier.TIER_0_LITERAL,
     StrategyTier.TIER_1_PARAMETRIC,
@@ -170,6 +177,23 @@ def load_registry(path: Path | None = None) -> dict[str, list[str]]:
 # ---------------------------------------------------------------------------
 # Deterministic text → primitive mapping
 # ---------------------------------------------------------------------------
+
+
+def split_entry_exit(text: str) -> tuple[str, str]:
+    """Partition mechanism prose into (entry_clause, exit_clause) regions.
+
+    Phrase tables share directional keywords (``cross above``, ``reclaim``,
+    ``cross below``), so mapping each table over the WHOLE corpus lets an
+    entry keyword written inside the exit clause flip the entry primitive
+    (and vice versa). Splitting at the first exit-clause marker confines
+    each table to its own region — deterministic since the first marker
+    wins. No exit marker → the whole text is the entry clause and the exit
+    clause is empty (exit falls back to its documented protective bias).
+    """
+    marker = _EXIT_MARKER_RE.search(text)
+    if marker is None:
+        return text, ""
+    return text[: marker.start()], text[marker.start() :]
 
 
 def map_entry_primitive(text: str, registry: dict[str, list[str]]) -> str:
@@ -358,8 +382,9 @@ def compile_specs(
     mechanism = extraction.core_mechanism or extraction.primary_hypothesis
     text = f"{mechanism} {abstraction.abstract_hypothesis if abstraction else ''}"
 
-    entry = map_entry_primitive(text, registry)
-    exit_ = map_exit_primitive(text, registry)
+    entry_clause, exit_clause = split_entry_exit(text)
+    entry = map_entry_primitive(entry_clause, registry)
+    exit_ = map_exit_primitive(exit_clause, registry)
     indicators = detect_indicators(text, registry)
     timeframe = detect_timeframe(mechanism, fallback=timeframe_fallback)
     tags = risk_union(annotations)
@@ -539,6 +564,7 @@ __all__ = [
     "primary_guard_filter",
     "risk_union",
     "secondary_signal_ast",
+    "split_entry_exit",
     "validate_and_export",
     "validate_ast_registry",
 ]

@@ -27,6 +27,7 @@ from black_box.block_a.spec_compiler import (
     pick_secondary_signal,
     primary_guard_filter,
     risk_union,
+    split_entry_exit,
     validate_and_export,
 )
 from tests.block_a_defs import vwap_abstraction, vwap_annotations, vwap_extraction
@@ -103,6 +104,39 @@ def test_exit_primitive_mapping() -> None:
         == "TRIGGER_CROSS_BELOW"
     )
     assert map_exit_primitive("hard stop-loss at 1.5 ATR", reg) == "TRIGGER_CROSS_BELOW"
+
+
+def test_split_entry_exit_clause_regions() -> None:
+    """The splitter confines each phrase table to its own clause region."""
+    entry, exit_ = split_entry_exit(
+        "Buy when price falls below the lower band; "
+        "exit when price crosses above the anchor."
+    )
+    assert "falls below the lower band" in entry
+    assert "crosses above" in exit_
+    assert "crosses above" not in entry  # exit keywords never leak into entry
+
+
+def test_split_entry_exit_no_exit_marker() -> None:
+    """No exit marker → the whole text is the entry clause, exit is empty."""
+    entry, exit_ = split_entry_exit("Long when price crosses above VWAP")
+    assert entry == "Long when price crosses above VWAP"
+    assert exit_ == ""
+
+
+def test_mixed_clause_does_not_cross_contaminate() -> None:
+    """Entry keyword inside the EXIT clause must not flip the entry primitive."""
+    reg = load_registry()
+    text = (
+        "Buy when price falls below the lower band; "
+        "exit when price crosses above the anchor."
+    )
+    entry_clause, exit_clause = split_entry_exit(text)
+    # Old behavior mapped both tables over the whole corpus: the exit clause's
+    # "crosses above" would have hijacked the entry (CROSS_ABOVE). Per-clause
+    # regions keep them apart.
+    assert map_entry_primitive(entry_clause, reg) == "TRIGGER_CROSS_BELOW"
+    assert map_exit_primitive(exit_clause, reg) == "TRIGGER_CROSS_ABOVE"
 
 
 def test_indicator_detection_deduped() -> None:
