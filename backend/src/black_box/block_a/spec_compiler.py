@@ -25,6 +25,7 @@ from pathlib import Path
 import polars as pl
 
 from black_box.block_a.models import (
+    RISK_PRIORITY,
     CausalAbstractionSchema,
     ExecutableStrategySpec,
     GenericPrimitiveNode,
@@ -49,16 +50,14 @@ DEFAULT_REGISTRY_PATH = (
     Path(__file__).resolve().parent / "config" / "primitives_registry.json"
 )
 
-#: Risk-tag → primary risk-guard filter (Tier 1), first-listed wins.
+#: Risk-tag → primary risk-guard filter (Tier 1). Priority order is owned by
+#: `models.RISK_PRIORITY` (single source); this dict is a lookup only.
 RISK_GUARD_FILTERS: dict[RiskTag, str] = {
     RiskTag.EXECUTION_SLIPPAGE_HEAVY: "FLT_VOLUME_RATIO",
     RiskTag.LOW_LIQUIDITY_FRAGILITY: "FLT_VOLUME_RATIO",
     RiskTag.HIGH_SESSION_SENSITIVITY: "FLT_TIME_OF_DAY",
     RiskTag.PARAMETRIC_OVERFIT_RISK: "FLT_VOLATILITY_THRESHOLD",
 }
-
-#: Annotation union ordering — highest guard priority first.
-RISK_PRIORITY: list[RiskTag] = list(RISK_GUARD_FILTERS)
 
 #: Ordered (phrase → primitive) — first match wins (deterministic).
 _ENTRY_PHRASES: tuple[tuple[str, str], ...] = (

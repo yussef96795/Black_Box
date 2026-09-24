@@ -109,9 +109,9 @@ def test_toggle_risk_tags_revalidates(monkeypatch) -> None:
     """`t` then an index toggles the tag; the spec is re-validated."""
     import builtins
 
-    # menu order is the RiskTag enum definition: 4 == EXECUTION_SLIPPAGE_HEAVY
+    # menu order is canonical RISK_PRIORITY: 1 == EXECUTION_SLIPPAGE_HEAVY
     spec = _spec("S1", tags=[RiskTag.EXECUTION_SLIPPAGE_HEAVY])
-    monkeypatch.setattr(builtins, "input", _input_sequence("t", "4", "a"))
+    monkeypatch.setattr(builtins, "input", _input_sequence("t", "1", "a"))
     decision = confirm_gatekeeper(_state(spec))
     assert decision.status == "complete"
     edited = decision.specs[0]
@@ -122,8 +122,8 @@ def test_toggle_off_adds_tag_back(monkeypatch) -> None:
     """Toggling an off tag turns it on; enum cap is structural (≤4)."""
     import builtins
 
-    spec = _spec("S1")  # no tags: 1 → HIGH_SESSION_SENSITIVITY turns on
-    monkeypatch.setattr(builtins, "input", _input_sequence("t", "1", "a"))
+    spec = _spec("S1")  # no tags: 3 → HIGH_SESSION_SENSITIVITY turns on
+    monkeypatch.setattr(builtins, "input", _input_sequence("t", "3", "a"))
     decision = confirm_gatekeeper(_state(spec))
     assert decision.specs[0].risk_annotations == [RiskTag.HIGH_SESSION_SENSITIVITY]
 
@@ -184,9 +184,9 @@ def test_toggle_reflected_in_emitted_payload(
     """Toggle a tag off on the first spec; the edit lands in the export."""
     import builtins
 
-    # first spec: t → toggles index 4 (EXECUTION_SLIPPAGE_HEAVY) → approve;
+    # first spec: t → toggles index 1 (EXECUTION_SLIPPAGE_HEAVY) → approve;
     # second spec: approve untouched; rest rejected
-    monkeypatch.setattr(builtins, "input", _input_sequence("t", "4", "a", "a"))
+    monkeypatch.setattr(builtins, "input", _input_sequence("t", "1", "a", "a"))
     out = tmp_path / "out"
     result = _complete_engine(catalog).run("paper.md", approve=None, out_dir=out)
 

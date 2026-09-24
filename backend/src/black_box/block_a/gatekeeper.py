@@ -20,10 +20,10 @@ from rich.panel import Panel
 from rich.table import Table
 
 from black_box.block_a.models import (
+    RISK_PRIORITY,
     BlockAState,
     ExecutableStrategySpec,
     GatekeeperDecision,
-    RiskTag,
 )
 
 console = Console()
@@ -77,11 +77,11 @@ def _render_single(spec: ExecutableStrategySpec, index: int, total: int) -> str:
 
 
 def _toggle_risk_tags(spec: ExecutableStrategySpec) -> ExecutableStrategySpec:
-    """Interactively toggle the 4 RiskTag values, then re-validate the spec."""
+    """Interactively toggle the RiskTags in canonical priority order."""
     console.print(
         "Risk tags (enter comma/space-separated indices to toggle, blank to keep):"
     )
-    for idx, tag in enumerate(RiskTag, start=1):
+    for idx, tag in enumerate(RISK_PRIORITY, start=1):
         state = "on" if tag in spec.risk_annotations else "off"
         console.print(f"  {idx}. {tag.value} [{state}]")
     raw = input("toggle > ").strip()
@@ -92,8 +92,8 @@ def _toggle_risk_tags(spec: ExecutableStrategySpec) -> ExecutableStrategySpec:
         return spec
     tags = list(spec.risk_annotations)
     for idx in indices:
-        if 1 <= idx <= len(RiskTag):
-            tag = list(RiskTag)[idx - 1]
+        if 1 <= idx <= len(RISK_PRIORITY):
+            tag = RISK_PRIORITY[idx - 1]
             if tag in tags:
                 tags.remove(tag)
             else:

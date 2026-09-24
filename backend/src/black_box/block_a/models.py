@@ -103,6 +103,18 @@ class RiskTag(str, Enum):
     EXECUTION_SLIPPAGE_HEAVY = "EXECUTION_SLIPPAGE_HEAVY"
 
 
+#: Canonical risk-tag priority order — single source of truth shared by the
+#: gatekeeper toggle menu, Tier 1 guard selection, and annotation unions.
+#: Explicit (not derived from enum/dict declaration order) so menu indices
+#: and guard precedence never drift silently when the enum is reordered.
+RISK_PRIORITY: tuple[RiskTag, ...] = (
+    RiskTag.EXECUTION_SLIPPAGE_HEAVY,
+    RiskTag.LOW_LIQUIDITY_FRAGILITY,
+    RiskTag.HIGH_SESSION_SENSITIVITY,
+    RiskTag.PARAMETRIC_OVERFIT_RISK,
+)
+
+
 class StrategyAnnotation(BaseModel):
     """One Stage A5 quant-operator observation.
 
