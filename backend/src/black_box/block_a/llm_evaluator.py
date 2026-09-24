@@ -309,14 +309,15 @@ class LLMEvaluator:
             "THE SYMBOL: symbols ending in USDT/USDC, or BTC/ETH/SOL/ADA/DOGE "
             "perpetuals, are 'Crypto'; QQQ/SPY/NQ index futures are "
             "'Equities'/'Futures'. symbol in UPPERCASE (e.g. BTCUSDT, QQQ); "
-            "required_granularity one of {tick, 1s, 1m, 1h, 1d}; "
+            "required_granularity one of {tick, 1s, 1m, 5m, 15m, 1h, 1d}; "
             "requires_l2_book TRUE only when the paper demands order book / "
             "L2/L3 depth; requires_order_flow TRUE only when the paper "
             "explicitly demands order flow / flow imbalance data (funding "
             "rates alone do NOT count); start_year an integer when a start "
             "date is given.\n"
             "- core_mechanism: a technical summary of the entry rule, exit "
-            "rule, and sizing rule.\n\n"
+            "rule, and sizing rule (at least 50 characters, naming any "
+            "specific indicators/triggers the paper uses).\n\n"
             f"Paper chunks:\n{self._join_chunks(chunks)}"
         )
         return self._create(PaperExtractionSchema, prompt, stage="extract_requirements")

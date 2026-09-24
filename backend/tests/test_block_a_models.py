@@ -24,7 +24,15 @@ from black_box.block_a.models import (
 def test_data_granularity_enum_values() -> None:
     assert DataGranularity.MINUTE_1.value == "1m"
     assert DataGranularity.TICK.value == "tick"
-    assert {g.value for g in DataGranularity} == {"tick", "1s", "1m", "1h", "1d"}
+    assert {g.value for g in DataGranularity} == {
+        "tick",
+        "1s",
+        "1m",
+        "5m",
+        "15m",
+        "1h",
+        "1d",
+    }
 
 
 def test_dataset_requirement_defaults() -> None:
@@ -125,7 +133,10 @@ def test_extraction_roundtrip_json() -> None:
                 required_granularity=DataGranularity.MINUTE_1,
             )
         ],
-        core_mechanism="mechanism",
+        core_mechanism=(
+            "Entry on a cross above the VWAP anchor with positive cumulative "
+            "volume delta; exit on a cross back below VWAP; size by ATR."
+        ),
     )
     restored = PaperExtractionSchema.model_validate_json(extraction.model_dump_json())
     assert restored == extraction

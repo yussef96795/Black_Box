@@ -31,6 +31,8 @@ class DataGranularity(str, Enum):
     TICK = "tick"
     SECOND_1 = "1s"
     MINUTE_1 = "1m"
+    MINUTE_5 = "5m"
+    MINUTE_15 = "15m"
     HOUR_1 = "1h"
     DAILY = "1d"
 
@@ -58,7 +60,12 @@ class PaperExtractionSchema(BaseModel):
     datasets_used: list[DatasetRequirement] = Field(default_factory=list)
     core_mechanism: str = Field(
         ...,
-        description="Technical summary of entry, exit, and sizing rules",
+        min_length=50,
+        max_length=2000,
+        description=(
+            "Technical summary of entry, exit, and sizing rules (must include "
+            "specific indicators/triggers mentioned)"
+        ),
     )
 
 

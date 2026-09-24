@@ -43,7 +43,7 @@ MAX_SPECS = 5
 
 #: OperandNode ids that need not be registry primitives: OHLCV data-series
 #: fields and bare numeric constants (e.g. an EMA window of 20).
-AST_DATA_SERIES = frozenset({"open", "high", "low", "close", "volume", "vwap"})
+AST_DATA_SERIES = frozenset({"open", "high", "low", "close", "volume"})
 
 DEFAULT_REGISTRY_PATH = (
     Path(__file__).resolve().parent / "config" / "primitives_registry.json"
