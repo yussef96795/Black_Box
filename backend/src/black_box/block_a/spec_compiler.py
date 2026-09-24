@@ -21,6 +21,7 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -163,14 +164,23 @@ _UNIT_NORMALIZE: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def load_registry(path: Path | None = None) -> dict[str, list[str]]:
-    """Load the primitive vocabulary (triggers, indicators, filters)."""
+def load_registry(path: Path | None = None) -> dict[str, Any]:
+    """Load the primitive vocabulary + optional phrase/guard/data tables.
+
+    Returns ``triggers``, ``indicators``, ``filters`` plus (when present in
+    the JSON) ``phrases`` (entry/exit/indicators), ``risk_guards`` (tag →
+    guard filter, in priority order) and ``data_series``. Consumers fall
+    back to their module-level tables when a key is absent.
+    """
     target = path or DEFAULT_REGISTRY_PATH
     data = json.loads(target.read_text(encoding="utf-8"))
     return {
         "triggers": list(data.get("triggers", [])),
         "indicators": list(data.get("indicators", [])),
         "filters": list(data.get("filters", [])),
+        "phrases": data.get("phrases", {}),
+        "risk_guards": data.get("risk_guards", []),
+        "data_series": list(data.get("data_series", [])),
     }
 
 
@@ -196,26 +206,43 @@ def split_entry_exit(text: str) -> tuple[str, str]:
     return text[: marker.start()], text[marker.start() :]
 
 
-def map_entry_primitive(text: str, registry: dict[str, list[str]]) -> str:
+def _resolve_phrases(
+    registry: dict[str, Any], key: str, fallback: tuple[tuple[str, str], ...]
+) -> tuple[tuple[str, str], ...]:
+    """Registry phrase table for `key`, else the module-level fallback.
+
+    The registry JSON stores phrases as ``[phrase, primitive]`` pairs under
+    ``phrases.<key>``; consumers fall back to their deterministic module
+    tables when the key is absent (e.g. a minimal per-spec registry).
+    """
+    pairs = (registry.get("phrases") or {}).get(key)
+    if not pairs:
+        return fallback
+    return tuple((str(phrase), str(primitive)) for phrase, primitive in pairs)
+
+
+def map_entry_primitive(text: str, registry: dict[str, Any]) -> str:
     lowered = text.lower()
-    for phrase, primitive in _ENTRY_PHRASES:
+    for phrase, primitive in _resolve_phrases(registry, "entry", _ENTRY_PHRASES):
         if phrase in lowered and primitive in registry["triggers"]:
             return primitive
     return "TRIGGER_CROSS_ABOVE"  # documented fallback
 
 
-def map_exit_primitive(text: str, registry: dict[str, list[str]]) -> str:
+def map_exit_primitive(text: str, registry: dict[str, Any]) -> str:
     lowered = text.lower()
-    for phrase, primitive in _EXIT_PHRASES:
+    for phrase, primitive in _resolve_phrases(registry, "exit", _EXIT_PHRASES):
         if phrase in lowered and primitive in registry["triggers"]:
             return primitive
     return "TRIGGER_CROSS_BELOW"  # documented fallback (protective bias)
 
 
-def detect_indicators(text: str, registry: dict[str, list[str]]) -> list[str]:
+def detect_indicators(text: str, registry: dict[str, Any]) -> list[str]:
     lowered = text.lower()
     found: list[str] = []
-    for phrase, primitive in _INDICATOR_PHRASES:
+    for phrase, primitive in _resolve_phrases(
+        registry, "indicators", _INDICATOR_PHRASES
+    ):
         if (
             phrase in lowered
             and primitive in registry["indicators"]
@@ -249,10 +276,30 @@ def risk_union(annotations: list[StrategyAnnotation]) -> list[RiskTag]:
     return [tag for tag in RISK_PRIORITY if tag in seen]
 
 
-def primary_guard_filter(annotations: list[StrategyAnnotation]) -> str | None:
+def _resolve_guard_filters(
+    registry: dict[str, Any] | None,
+) -> dict[RiskTag, str]:
+    """Registry ``risk_guards`` (tag → filter, in priority order) — else the
+    module-level default. The registry only maps tag→filter; the priority
+    ORDER itself stays in `models.RISK_PRIORITY` (single source)."""
+    guards = (registry or {}).get("risk_guards") if registry else None
+    if not guards:
+        return RISK_GUARD_FILTERS
+    resolved: dict[RiskTag, str] = {}
+    for guard in guards:
+        tag = RiskTag(guard["tag"])
+        resolved[tag] = guard["filter"]
+    return resolved
+
+
+def primary_guard_filter(
+    annotations: list[StrategyAnnotation],
+    registry: dict[str, Any] | None = None,
+) -> str | None:
     """Highest-priority risk-guard filter (Tier 1), None when no tags."""
     tags = risk_union(annotations)
-    return RISK_GUARD_FILTERS[tags[0]] if tags else None
+    guards = _resolve_guard_filters(registry)
+    return guards[tags[0]] if tags else None
 
 
 # ---------------------------------------------------------------------------
@@ -260,8 +307,16 @@ def primary_guard_filter(annotations: list[StrategyAnnotation]) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+def _data_series(registry: dict[str, Any]) -> set[str]:
+    """Registry ``data_series`` vocabulary, else the module-level default."""
+    series = registry.get("data_series")
+    if not series:
+        return set(AST_DATA_SERIES)
+    return set(series)
+
+
 def validate_ast_registry(
-    node: GenericPrimitiveNode, registry: dict[str, list[str]]
+    node: GenericPrimitiveNode, registry: dict[str, Any]
 ) -> list[str]:
     """Return primitive ids referenced by `node` that do NOT resolve.
 
@@ -271,7 +326,7 @@ def validate_ast_registry(
     An empty list means the tree is fully resolvable. Deterministic, no LLM.
     """
     if isinstance(node, OperandNode):
-        allowed = set(registry["indicators"]) | AST_DATA_SERIES
+        allowed = set(registry["indicators"]) | _data_series(registry)
         if node.kind == "indicator":
             return [] if node.id in set(registry["indicators"]) else [node.id]
         if node.id in allowed or str(node.id).replace(".", "", 1).isdigit():
@@ -388,7 +443,7 @@ def compile_specs(
     indicators = detect_indicators(text, registry)
     timeframe = detect_timeframe(mechanism, fallback=timeframe_fallback)
     tags = risk_union(annotations)
-    guard_filter = primary_guard_filter(annotations)
+    guard_filter = primary_guard_filter(annotations, registry)
     anchor_notes = abstraction.causal_anchor if abstraction else mechanism
     invariants = list(abstraction.non_negotiable_invariants) if abstraction else []
 

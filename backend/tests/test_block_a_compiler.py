@@ -12,6 +12,7 @@ from black_box.block_a.catalog import build_catalog
 from black_box.block_a.models import (
     DataGranularity,
     ExecutableStrategySpec,
+    OperatorNode,
     ResourceVerdict,
     RiskTag,
     StrategyTier,
@@ -29,6 +30,7 @@ from black_box.block_a.spec_compiler import (
     risk_union,
     split_entry_exit,
     validate_and_export,
+    validate_ast_registry,
 )
 from tests.block_a_defs import vwap_abstraction, vwap_annotations, vwap_extraction
 
@@ -150,7 +152,7 @@ def test_indicator_detection_deduped() -> None:
 def test_pick_secondary_signal_complements_detected_set() -> None:
     """Augmentation adds a registry indicator the paper does NOT already use."""
     reg = load_registry()
-    # VWAP paper already uses VMAP + volume delta → first complement is EMA
+    # VWAP paper already uses VWAP + volume delta → first complement is EMA
     assert pick_secondary_signal(["IND_VWAP", "IND_VOLUME_DELTA"], reg) == "IND_EMA"
     # single detected indicator → complement, not a duplicate
     assert pick_secondary_signal(["IND_EMA"], reg) == "IND_VWAP"
@@ -165,6 +167,75 @@ def test_timeframe_detection() -> None:
     assert detect_timeframe("intraday 2h bars", "1m") == "2h"
     assert detect_timeframe("on the 5-day chart", "1m") == "5d"
     assert detect_timeframe("daily data only", "1m") == "1m"  # no digits → fallback
+
+
+# --- registry extension (phrases / risk_guards / data_series) ---------------
+
+
+def test_registry_exposes_extension_tables() -> None:
+    """P2.1: the JSON registry carries phrase, guard and data-series tables."""
+    reg = load_registry()
+    assert set(reg["phrases"]) == {"entry", "exit", "indicators"}
+    assert reg["phrases"]["entry"][0] == ["band breakout", "TRIGGER_BAND_BREAKOUT"]
+    assert [g["tag"] for g in reg["risk_guards"]] == [
+        RiskTag.EXECUTION_SLIPPAGE_HEAVY.value,
+        RiskTag.LOW_LIQUIDITY_FRAGILITY.value,
+        RiskTag.HIGH_SESSION_SENSITIVITY.value,
+        RiskTag.PARAMETRIC_OVERFIT_RISK.value,
+    ]
+    assert reg["data_series"] == ["open", "high", "low", "close", "volume"]
+
+
+def test_registry_phrases_drive_mapping_minimal_registry() -> None:
+    """Phrase tables load from the registry; absent keys fall back intact."""
+    reg = load_registry()
+    assert map_entry_primitive("price crosses above VWAP", reg) == "TRIGGER_CROSS_ABOVE"
+    assert detect_indicators("uses an EMA filter", reg) == ["IND_EMA"]
+    # A minimal registry (triggers only, no phrases) still maps via module fallback.
+    minimal = {"triggers": ["TRIGGER_CROSS_ABOVE"], "indicators": [], "filters": []}
+    assert (
+        map_entry_primitive("price crosses above VWAP", minimal)
+        == "TRIGGER_CROSS_ABOVE"
+    )
+
+
+def test_registry_risk_guards_resolve_and_fallback() -> None:
+    """Tier 1 guard filter resolves from registry risk_guards in priority order."""
+    reg = load_registry()
+    assert (
+        primary_guard_filter(vwap_annotations(slippage=True), reg) == "FLT_VOLUME_RATIO"
+    )
+    # Module-level default still applies when a registry carries no risk_guards.
+    bare = {"triggers": [], "indicators": [], "filters": ["FLT_VOLUME_RATIO"]}
+    assert (
+        primary_guard_filter(vwap_annotations(slippage=True), bare)
+        == "FLT_VOLUME_RATIO"
+    )
+
+
+def test_registry_data_series_fallback_for_ast() -> None:
+    """AST validation accepts registry data_series; module set is the fallback."""
+    reg = load_registry()
+    tree = OperatorNode.model_validate(
+        {
+            "kind": "unary_op",
+            "op": "zscore",
+            "left": {
+                "kind": "binary_op",
+                "op": "ema",
+                "left": {
+                    "kind": "data_stream",
+                    "symbol": "BTCUSDT",
+                    "granularity": "1m",
+                },
+                "right": {"kind": "literal", "id": "20"},
+            },
+        }
+    )
+    assert validate_ast_registry(tree, reg) == []
+    # A registry dict written WITHOUT data_series falls back to AST_DATA_SERIES.
+    stripped = {k: v for k, v in reg.items() if k != "data_series"}
+    assert validate_ast_registry(tree, stripped) == []
 
 
 # --- risk guards (Stage A5 → Tier 1) ---------------------------------------

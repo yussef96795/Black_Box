@@ -1,6 +1,6 @@
 {
   "description": "Allowed primitive vocabulary for Block A Stage A6 (DSL registry).",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "triggers": [
     "TRIGGER_CROSS_ABOVE",
     "TRIGGER_CROSS_BELOW",
@@ -16,5 +16,74 @@
     "FLT_TIME_OF_DAY",
     "FLT_VOLATILITY_THRESHOLD",
     "FLT_VOLUME_RATIO"
-  ]
+  ],
+  "phrases": {
+    "entry": [
+      ["band breakout", "TRIGGER_BAND_BREAKOUT"],
+      ["breakout of the band", "TRIGGER_BAND_BREAKOUT"],
+      ["break out of the band", "TRIGGER_BAND_BREAKOUT"],
+      ["cross above", "TRIGGER_CROSS_ABOVE"],
+      ["crosses above", "TRIGGER_CROSS_ABOVE"],
+      ["crossing above", "TRIGGER_CROSS_ABOVE"],
+      ["break above", "TRIGGER_CROSS_ABOVE"],
+      ["breaks above", "TRIGGER_CROSS_ABOVE"],
+      ["above the upper", "TRIGGER_CROSS_ABOVE"],
+      ["rises above", "TRIGGER_CROSS_ABOVE"],
+      ["reclaim", "TRIGGER_CROSS_ABOVE"],
+      ["cross below", "TRIGGER_CROSS_BELOW"],
+      ["crosses below", "TRIGGER_CROSS_BELOW"],
+      ["crossing below", "TRIGGER_CROSS_BELOW"],
+      ["break below", "TRIGGER_CROSS_BELOW"],
+      ["breaks below", "TRIGGER_CROSS_BELOW"],
+      ["below the lower", "TRIGGER_CROSS_BELOW"],
+      ["falls below", "TRIGGER_CROSS_BELOW"],
+      ["drops below", "TRIGGER_CROSS_BELOW"],
+      ["touch the lower", "TRIGGER_CROSS_BELOW"],
+      ["touches the lower", "TRIGGER_CROSS_BELOW"],
+      ["dips below", "TRIGGER_CROSS_BELOW"],
+      ["below the vwap", "TRIGGER_CROSS_BELOW"]
+    ],
+    "exit": [
+      ["returns to the middle", "TRIGGER_CROSS_ABOVE"],
+      ["crosses back above", "TRIGGER_CROSS_ABOVE"],
+      ["cross back above", "TRIGGER_CROSS_ABOVE"],
+      ["reclaim", "TRIGGER_CROSS_ABOVE"],
+      ["crosses below", "TRIGGER_CROSS_BELOW"],
+      ["cross below", "TRIGGER_CROSS_BELOW"],
+      ["breaks below", "TRIGGER_CROSS_BELOW"],
+      ["break below", "TRIGGER_CROSS_BELOW"],
+      ["falls below", "TRIGGER_CROSS_BELOW"],
+      ["drops below", "TRIGGER_CROSS_BELOW"],
+      ["below the vwap", "TRIGGER_CROSS_BELOW"],
+      ["stop-loss", "TRIGGER_CROSS_BELOW"],
+      ["stop loss", "TRIGGER_CROSS_BELOW"],
+      ["trailing stop", "TRIGGER_CROSS_BELOW"],
+      ["band breakout", "TRIGGER_BAND_BREAKOUT"],
+      ["crosses above", "TRIGGER_CROSS_ABOVE"],
+      ["cross above", "TRIGGER_CROSS_ABOVE"]
+    ],
+    "indicators": [
+      ["vwap", "IND_VWAP"],
+      ["volume weighted average", "IND_VWAP"],
+      ["volume-weighted average", "IND_VWAP"],
+      ["ema", "IND_EMA"],
+      ["exponential moving average", "IND_EMA"],
+      ["moving average", "IND_EMA"],
+      ["bollinger", "IND_EMA"],
+      ["middle band", "IND_EMA"],
+      ["atr", "IND_ATR"],
+      ["average true range", "IND_ATR"],
+      ["volume delta", "IND_VOLUME_DELTA"],
+      ["cumulative delta", "IND_VOLUME_DELTA"],
+      ["delta volume", "IND_VOLUME_DELTA"],
+      ["order flow delta", "IND_VOLUME_DELTA"]
+    ]
+  },
+  "risk_guards": [
+    {"tag": "EXECUTION_SLIPPAGE_HEAVY", "filter": "FLT_VOLUME_RATIO"},
+    {"tag": "LOW_LIQUIDITY_FRAGILITY", "filter": "FLT_VOLUME_RATIO"},
+    {"tag": "HIGH_SESSION_SENSITIVITY", "filter": "FLT_TIME_OF_DAY"},
+    {"tag": "PARAMETRIC_OVERFIT_RISK", "filter": "FLT_VOLATILITY_THRESHOLD"}
+  ],
+  "data_series": ["open", "high", "low", "close", "volume"]
 }
