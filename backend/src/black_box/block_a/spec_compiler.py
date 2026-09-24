@@ -299,24 +299,28 @@ def pick_secondary_signal(
 # ---------------------------------------------------------------------------
 
 
-def _alternate_symbol(catalog_path: Path, anchor: str) -> str | None:
-    """Deterministic Tier 2 target: prefer another asset class, then symbol."""
+def _alternate_symbol(catalog_path: Path, anchor: str, timeframe: str) -> str | None:
+    """Deterministic Tier 2 target.
+
+    Catalog metadata governs availability (no hardcoded L2-capability filter):
+    prefer a symbol with a row at the target `timeframe` granularity, then
+    another asset class, then symbol order. Falls back to any alternate
+    symbol when none carries the target granularity.
+    """
     df = pl.read_parquet(catalog_path)
     candidates = df.filter(pl.col("symbol") != anchor)
     if candidates.is_empty():
         return None
     anchor_class = df.filter(pl.col("symbol") == anchor)["asset_class"].to_list()
     anchor_class = anchor_class[0] if anchor_class else ""
-    candidates = candidates.with_columns(
-        (pl.col("asset_class") == anchor_class).alias("_same_class")
+    scored = candidates.with_columns(
+        (pl.col("asset_class") == anchor_class).alias("_same_class"),
+        (pl.col("granularity") == timeframe).alias("_has_target_granularity"),
     )
-    ranked = (
-        candidates.sort(["_same_class", "symbol"])
-        .filter(pl.col("has_l2_book") == True)
-        .head(1)
-    )
-    if ranked.is_empty():  # fall back to any alternate symbol
-        ranked = candidates.sort(["_same_class", "symbol"]).head(1)
+    ranked = scored.sort(
+        ["_has_target_granularity", "_same_class", "symbol"],
+        descending=[True, False, False],
+    ).head(1)
     if ranked.is_empty():
         return None
     return str(ranked["symbol"][0])
@@ -443,7 +447,7 @@ def compile_specs(
         )
 
     # --- Tier 2: generalized to another liquid asset (dynamic params) ------
-    alternate = _alternate_symbol(catalog_path, anchor)
+    alternate = _alternate_symbol(catalog_path, anchor, timeframe)
     if alternate:
         candidates.append(
             ExecutableStrategySpec(

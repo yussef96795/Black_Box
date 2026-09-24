@@ -17,6 +17,7 @@ from black_box.block_a.models import (
     StrategyTier,
 )
 from black_box.block_a.spec_compiler import (
+    _alternate_symbol,
     compile_specs,
     detect_indicators,
     detect_timeframe,
@@ -185,7 +186,8 @@ def test_compile_full_matrix(catalog: Path) -> None:
     assert RiskTag.EXECUTION_SLIPPAGE_HEAVY in t1.risk_annotations
 
     t2 = next(s for s in specs if s.tier == StrategyTier.TIER_2_GENERALIZED)
-    assert t2.target_asset in {"ETHUSDT", "ADAUSDT"}  # L2-capable alternative
+    # catalog drives availability (1m rows exist for ETH/ADA — no L2 filter)
+    assert t2.target_asset in {"ETHUSDT", "ADAUSDT"}
     assert t2.parameters["mode"] == "dynamic"
     assert "generalized_from:BTCUSDT" in t2.parameters["origin"]
 
@@ -261,6 +263,58 @@ def test_max_specs_cap(tmp_path: Path) -> None:
         max_specs=2,
     )
     assert len(specs) == 2
+
+
+def test_alternate_symbol_prefers_target_granularity(tmp_path: Path) -> None:
+    """Tier 2 target = symbol with a row at the paper's timeframe (no L2 gate)."""
+    rows = [
+        {
+            "asset_class": "Crypto",
+            "symbol": "BTCUSDT",
+            "granularity": "1m",
+            "has_l2_book": True,
+            "has_order_flow": True,
+            "start_year": 2020,
+        },
+        {
+            "asset_class": "Crypto",
+            "symbol": "ETHUSDT",
+            "granularity": "1m",
+            "has_l2_book": True,
+            "has_order_flow": True,
+            "start_year": 2020,
+        },
+        {
+            "asset_class": "Crypto",
+            "symbol": "ADAUSDT",
+            "granularity": "1m",
+            "has_l2_book": False,
+            "has_order_flow": False,
+            "start_year": 2021,
+        },
+    ]
+    catalog = build_catalog(tmp_path / "catalog.parquet", rows=rows)
+    # 1m rows exist for ETH and ADA → same class, symbol-ascending: ADA first
+    assert _alternate_symbol(catalog, "BTCUSDT", "1m") == "ADAUSDT"
+    # no 15m rows at all → fall back to any alternate (still deterministic)
+    assert _alternate_symbol(catalog, "BTCUSDT", "15m") == "ADAUSDT"
+    # anchor excluded, never itself
+    assert _alternate_symbol(catalog, "ADAUSDT", "1m") == "BTCUSDT"
+
+
+def test_alternate_symbol_no_other_symbols(tmp_path: Path) -> None:
+    rows = [
+        {
+            "asset_class": "Crypto",
+            "symbol": "BTCUSDT",
+            "granularity": "1m",
+            "has_l2_book": True,
+            "has_order_flow": True,
+            "start_year": 2020,
+        },
+    ]
+    catalog = build_catalog(tmp_path / "catalog.parquet", rows=rows)
+    assert _alternate_symbol(catalog, "BTCUSDT", "1m") is None
 
 
 # --- export -----------------------------------------------------------------
