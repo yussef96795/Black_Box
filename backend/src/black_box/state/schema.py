@@ -1,19 +1,25 @@
-"""StrategyState schema (Block B Step 1).
+"""StrategyState schema (Block B — Formulation Engine).
 
-Typed Pydantic model defining the full strategy formulation state.
-All sub-models use only msgpack-serializable primitive types
-(dict, list, str, int, float) so the state can be checkpointed
-by LangGraph without custom serializers.
+Typed Pydantic state for the formulation LangGraph DAG. All list/dict
+fields use msgpack-serializable primitives so the graph checkpoints without
+custom serializers (house convention, mirrors ``BlockAState``).
 
-This is the single source of truth — the TypeScript counterpart at
-frontend/src/app/strategy/strategy-state.ts must mirror this model.
+Flow (see ``graph.py``):
 
-State flows through a LangGraph DAG:
-  idle → extracting → building → auditing → [hitl | complete | rejected]
+    hydrate_spec → structural_gate → cynical_auditor ── router ──► complete
+                                                  │             └─► rejected
+                                                  └─► hitl_payload → hitl_gate (interrupt)
+                                                     resume: apply_answers → structural_gate (loop)
 
-The iteration_count is capped at max_iterations (default 2) via a
-LangGraph ConditionalEdge, enforcing the deterministic N ≤ 2 retry
-loop described in plan.md Block B Step 1.
+Retry semantics live on ConditionalEdges, not the graph-level
+``max_iterations`` dead-man:
+  * ``round``  — HITL answer rounds completed (incremented on resume),
+    capped by ``max_rounds`` (= 2).
+  * ``iteration_count`` — monotonic stage counter for observability.
+
+This file is the single source of truth; the TypeScript mirror at
+frontend/src/app/strategy/strategy-state.ts must track it (contract-first,
+per plan.md guardrail 2).
 """
 
 from __future__ import annotations
@@ -22,83 +28,102 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# ---------------------------------------------------------------------------
-# Sub-models — all fields must be msgpack-serializable primitives
-# ---------------------------------------------------------------------------
 
+class ClarificationCard(BaseModel):
+    """One typed human-in-the-loop question emitted at the interrupt.
 
-class Quantity(BaseModel):
-    """A numerical quantity extracted from a document chunk."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(description="Parameter name, e.g. 'lookback'")
-    value: float = Field(description="Extracted numeric value")
-    unit: str = Field(default="", description="Unit of measurement")
-    ambiguity_level: Literal["clear", "ambiguous", "NULL_AMBIGUOUS"] = Field(
-        default="clear",
-        description="'NULL_AMBIGUOUS' when value cannot be reliably determined",
-    )
-    source_chunk_id: str = Field(default="", description="Origin chunk identifier")
-
-
-class SchemaDefinition(BaseModel):
-    """Auto-generated Pydantic model definition from extracted quantities.
-
-    All field values are stored as strings to ensure msgpack
-    serializability for LangGraph checkpointing.
+    `mutation` is the keyed state path a resume answer patches (e.g.
+    ``variants.0.sizing``) — answers are deterministic merges, not text.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    model_name: str = Field(default="StrategyParams", description="Pydantic model name")
-    fields: dict[str, str] = Field(
-        default_factory=dict,
-        description="Field name → JSON-serialized type/constraints (string)",
+    card_id: str = Field(description="Batch-unique id, referenced by resume answers")
+    type: Literal[
+        "missingPillar", "missingPrimitive", "remediation", "universe", "riskOverride"
+    ] = Field(description="Card kind; drives the mutation semantics on resume")
+    pillar: str = Field(
+        default="", description="entry | exit | sizing | risk | universe | codebase"
     )
-    sympy_expressions: list[str] = Field(
-        default_factory=list,
-        description="SymPy expression strings for validation",
+    title: str = Field(default="")
+    evidence: str = Field(
+        default="", description="Paper/chunk evidence backing the question"
     )
+    proposal: dict[str, Any] | None = Field(
+        default=None, description="Machine proposal applied on accept"
+    )
+    options: list[str] = Field(
+        default_factory=list, description="Allowed answer actions / candidates"
+    )
+    mutation: str = Field(default="", description="Keyed state path this card patches")
+    required: bool = Field(
+        default=True, description="Rejected required cards keep the session blocked"
+    )
+    state: Literal["pending", "answered", "skipped"] = Field(default="pending")
 
 
 class AuditFlag(BaseModel):
-    """A single issue flagged by the Cynical Auditor."""
+    """Contract for one Cynical Auditor finding (see ``auditor.py``)."""
 
     model_config = ConfigDict(extra="forbid")
 
-    type: str = Field(description="e.g. 'lookahead_bias', 'missing_exit', 'unbounded_param'")
-    severity: Literal["low", "medium", "high", "critical"] = Field(description="Severity level")
-    description: str = Field(description="Human-readable description of the issue")
-    suggestion: str = Field(default="", description="Suggested fix")
-
-
-# ---------------------------------------------------------------------------
-# StrategyState — the LangGraph state graph carries through this model
-# ---------------------------------------------------------------------------
+    type: str = Field(
+        description="e.g. lookahead_bias | missing_exit | no_sizing | unbounded_param"
+    )
+    severity: Literal["low", "medium", "high", "critical"]
+    description: str = Field(default="")
+    suggestion: str = Field(default="")
 
 
 class StrategyState(BaseModel):
-    """Full strategy formulation state, persisted via PostgreSQL checkpoints.
-
-    All fields use msgpack-serializable primitives so LangGraph
-    can checkpoint the state without custom serializers.
-    """
+    """Full formulation state, checkpointed by LangGraph (MemorySaver) and
+    snapshotted to disk (``block_b_out_dir``) for restart resilience."""
 
     model_config = ConfigDict(extra="forbid")
 
-    session_id: str = Field(description="Unique session identifier")
-    round: int = Field(default=0, description="HITL round counter")
-    extracted_quantities: list[Quantity] = Field(default_factory=list)
-    schema_definition: dict[str, Any] | None = Field(
-        default=None,
-        description="Auto-generated schema as a dict for checkpoint serializability",
+    session_id: str = Field(description="Unique session (thread_id)")
+    status: Literal[
+        "idle",
+        "extracting",
+        "building",
+        "auditing",
+        "hitl",
+        "complete",
+        "rejected",
+        "llm_failed",
+    ] = Field(default="idle")
+    spec: dict[str, Any] | None = Field(
+        default=None, description="The A6 ExecutableStrategySpec being formulated"
     )
-    audit_flags: list[AuditFlag] = Field(default_factory=list)
-    user_responses: dict[str, str] = Field(default_factory=dict)
-    status: Literal["idle", "extracting", "building", "auditing", "hitl", "complete", "rejected"] = Field(
-        default="idle",
-        description="Current pipeline stage",
+    variants: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Formulations: entry/exit/sizing triples + sweep grids (≤ MAX_VARIANTS)",
     )
-    iteration_count: int = Field(default=0, description="Monotonically increasing retry counter")
-    max_iterations: int = Field(default=2, description="Hard retry cap enforced by ConditionalEdge")
+    structural_errors: list[dict[str, Any]] = Field(default_factory=list)
+    audit_flags: list[dict[str, Any]] = Field(default_factory=list)
+    hitl_cards: list[dict[str, Any]] = Field(
+        default_factory=list, description="Current pending card batch"
+    )
+    answers_applied: list[str] = Field(
+        default_factory=list, description="Card ids already applied (idempotence)"
+    )
+    user_responses: dict[str, Any] = Field(
+        default_factory=dict, description="card_id → {action, value} from resume"
+    )
+    resume_key: str = Field(
+        default="",
+        description="Hash of the last applied answers batch (idempotent resume)",
+    )
+    round: int = Field(default=0, description="HITL answer rounds completed")
+    max_rounds: int = Field(
+        default=2, description="Round cap enforced by ConditionalEdge"
+    )
+    iteration_count: int = Field(
+        default=0, description="Monotonic stage counter (observability)"
+    )
+    max_iterations: int = Field(
+        default=2, description="Synthesis-retry bound inside nodes (dead-man safety)"
+    )
+
+
+__all__ = ["AuditFlag", "ClarificationCard", "StrategyState"]

@@ -116,3 +116,31 @@ class FeasibilityResult(BaseModel):
     status: Literal["PASSED", "REQUIRES_HITL", "REJECTED"]
     checks: list[FeasibilityCheck]
     summary: str
+
+
+# --- Block B — Formulation Engine -------------------------------------------
+
+
+class StrategySubmitRequest(BaseModel):
+    """Input to `POST /api/v1/strategy/submit`.
+
+    Either `spec_id` (a curated A6 spec from `out/block_a_specs.json`) or an
+    inline `spec` payload. Exactly one must be provided.
+    """
+
+    spec_id: str | None = Field(
+        default=None, description="spec_id of a curated A6 spec (block_a_specs.json)"
+    )
+    spec: dict[str, Any] | None = Field(
+        default=None, description="Inline ExecutableStrategySpec payload"
+    )
+
+
+class StrategyResumeRequest(BaseModel):
+    """Input to `POST /api/v1/strategy/{id}/resume`.
+
+    `answers` maps card_id → `{"action": "accept|override|reject|approve",
+    "value": {...}}` — deterministic keyed mutations, never free text.
+    """
+
+    answers: dict[str, Any] = Field(default_factory=dict)

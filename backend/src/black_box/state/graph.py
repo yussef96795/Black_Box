@@ -1,34 +1,39 @@
-"""Block B LangGraph DAG (Formulation Engine).
+"""Block B LangGraph DAG — Formulation Engine.
 
-Defines the StateGraph topology for strategy formulation:
+Topology:
 
-    idle → quant_extractor → schema_builder → cynical_auditor ──→ hitl ──→ END
-                                       │
-                                       └──→ complete → END
-                                       │
-                                       └──→ rejected → END
+    hydrate_spec → structural_gate → cynical_auditor ─ router ─► mark_complete → END
+                                                     │          └► mark_rejected → END
+                                                     └► hitl_payload → hitl_gate (interrupt)
+                                                        resume (Command) → apply_answers → structural_gate (loop)
 
-Deterministic iteration cap: after the auditor, if
-`iteration_count < max_iterations`, the graph can loop back to
-`quant_extractor` for another round. Otherwise it terminates.
+Caps are ConditionalEdges on state fields — the graph-level
+``max_iterations`` dead-man is NOT the control (a parked HITL stream trips
+it; see plan.md note). ``round`` counts completed HITL answer rounds;
+``max_rounds = 2`` bounds them before rejection.
 
-PostgreSQL checkpointing (via langgraph-checkpoint-postgres)
-persists state across server restarts so HITL sessions survive
-downtime.
+``replay_park`` restores a thread after a process restart from the disk
+snapshot: the pre-audit chain is deterministic, so replaying to the
+interrupt reproduces the same parked state with ``round`` preserved
+(``hitl_payload`` never increments it — ``apply_answers`` does).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
 
 from black_box.state.nodes import (
+    apply_answers,
     cynical_auditor,
+    hitl_gate,
     hitl_payload,
-    quant_extractor,
-    schema_builder,
+    hydrate_spec,
+    mark_complete,
+    mark_rejected,
+    structural_gate,
 )
 from black_box.state.schema import StrategyState
 
@@ -36,70 +41,61 @@ if TYPE_CHECKING:
     from langgraph.checkpoint.base import BaseCheckpointSaver
 
 
-def _route_after_audit(state: StrategyState) -> Literal["hitl_payload", END]:
-    """Conditional edge after the cynical auditor.
-
-    If the auditor found issues requiring human review, route to
-    the HITL payload generator. Otherwise terminate.
-    """
-    if state.status == "hitl":
+def _route_after_audit(
+    state: StrategyState,
+) -> Literal["mark_complete", "mark_rejected", "hitl_payload"]:
+    """Post-audit router: clean → complete; fixable → HITL; else rejected."""
+    if not state.audit_flags and not state.structural_errors:
+        return "mark_complete"
+    if state.round < state.max_rounds:
         return "hitl_payload"
-    return END
+    return "mark_rejected"
 
 
-def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> StateGraph:
-    """Build and compile the strategy formulation DAG.
-
-    Args:
-        checkpointer: Optional checkpoint saver for state persistence.
-            Defaults to MemorySaver (in-memory). For production, use
-            langgraph-checkpoint-postgres with a PostgreSQL connection.
-
-    Returns:
-        Compiled StateGraph ready to invoke via
-        `graph.invoke(initial_state, config={"configurable": {"thread_id": ...}})`.
-    """
+def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> Any:
+    """Compile the formulation DAG (MemorySaver by default)."""
     checkpointer = checkpointer or MemorySaver()
 
     workflow = StateGraph(StrategyState)
-
-    # Register nodes
-    workflow.add_node("quant_extractor", quant_extractor)
-    workflow.add_node("schema_builder", schema_builder)
+    workflow.add_node("hydrate_spec", hydrate_spec)
+    workflow.add_node("structural_gate", structural_gate)
     workflow.add_node("cynical_auditor", cynical_auditor)
     workflow.add_node("hitl_payload", hitl_payload)
+    workflow.add_node("hitl_gate", hitl_gate)
+    workflow.add_node("apply_answers", apply_answers)
+    workflow.add_node("mark_complete", mark_complete)
+    workflow.add_node("mark_rejected", mark_rejected)
 
-    # Define edges
-    workflow.set_entry_point("quant_extractor")
-    workflow.add_edge("quant_extractor", "schema_builder")
-    workflow.add_edge("schema_builder", "cynical_auditor")
-
-    # Conditional edge: after audit, decide path
+    workflow.add_edge(START, "hydrate_spec")
+    workflow.add_edge("hydrate_spec", "structural_gate")
+    workflow.add_edge("structural_gate", "cynical_auditor")
     workflow.add_conditional_edges("cynical_auditor", _route_after_audit)
+    workflow.add_edge("hitl_payload", "hitl_gate")
+    workflow.add_edge("hitl_gate", "apply_answers")
+    workflow.add_edge("apply_answers", "structural_gate")  # re-audit loop
+    workflow.add_edge("mark_complete", END)
+    workflow.add_edge("mark_rejected", END)
 
-    # HITL → END (resume later via POST /resume)
-    workflow.add_edge("hitl_payload", END)
-
-    # Compile
-    graph = workflow.compile(checkpointer=checkpointer)
-    return graph
+    return workflow.compile(checkpointer=checkpointer)
 
 
-def create_strategy_graph() -> StateGraph:
-    """Create a compiled strategy formulation graph with a memory checkpointer.
-
-    Usage:
-        graph = create_strategy_graph()
-        result = graph.invoke(
-            StrategyState(session_id="abc", status="idle"),
-            config={"configurable": {"thread_id": "abc"}},
-        )
-    """
+def create_strategy_graph() -> Any:
+    """Module-level compiled graph (in-memory checkpointer) for the API."""
     return build_graph()
 
 
-__all__ = [
-    "build_graph",
-    "create_strategy_graph",
-    "_route_after_audit",
-]
+def replay_park(graph: Any, persisted: dict[str, Any], thread_id: str) -> None:
+    """Re-park a persisted HITL session onto the in-memory checkpointer.
+
+    Only called when a process restart left the thread dangling: replaying
+    the deterministic pre-audit chain stops at ``hitl_gate``'s interrupt,
+    restoring a resumable thread with the card batch intact.
+    """
+    graph.invoke(
+        persisted,
+        config={"configurable": {"thread_id": thread_id}},
+        interrupt_after="hitl_gate",
+    )
+
+
+__all__ = ["_route_after_audit", "build_graph", "create_strategy_graph", "replay_park"]

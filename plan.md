@@ -236,120 +236,148 @@ validated `ExecutableStrategySpec` JSON array to `/out/block_a_specs.json`.
 
 # Block B: Formulation Engine & Human-In-The-Loop
 
-## Step 1: LangGraph State Machine Core
+> **Status: ✅ shipped (v1, deterministic core).** Architecture note: the
+> original PydanticAI/SymPy/WS design was replaced mid-implementation — see
+> "Design vs. implemented" at the end of Step 1. The API contract below is
+> frozen; the frontend (Step 2) is paused on the Stitch/Figma handoff.
+
+## Step 1: LangGraph State Machine Core ✅
 
 ### Technical Architecture
-- **Framework**: `langgraph` (LangGraph) + `langchain` for LLM integration
-- **State backend**: PostgreSQL via `langgraph-checkpoint-postgres` (not SQLite — PostgreSQL for production reliability)
-- **State schema**: Typed Pydantic model defining the full strategy formulation state
-- **Retry cap**: Deterministic iteration limit `N ≤ 2` enforced by LangGraph `max_iterations`
+- **Framework**: `langgraph` (v1.2.11) `StateGraph` over a typed Pydantic
+  `StrategyState`; `interrupt()`/`Command(resume=...)` for HITL
+- **Checkpointing**: in-process `MemorySaver` (live resume) + disk JSON
+  snapshot `out/strategy/<session_id>.json` (crash-safe read store).
+  After a process restart a parked session is re-parked deterministically
+  by replaying the pre-audit chain onto `hitl_gate` (`replay_park`).
+  **PostgreSQL checkpointing is the documented upgrade path, not built**
+  (ponytail: one durable store for v1).
+- **State schema**: single source of truth at
+  `backend/src/black_box/state/schema.py` (msgpack-safe primitives) —
+  interface contract for the TS mirror `frontend/src/app/strategy/strategy-state.ts`
+- **Round cap**: `round < max_rounds (= 2)` enforced by a `ConditionalEdge`;
+  `iteration_count` is a monotonic observability counter (NOT the control —
+  a parked HITL stream would trip a graph-level `max_iterations` dead-man).
 
-### State Schema (TypeScript/Python shared)
-```typescript
-// frontend/src/app/strategy/strategy-state.ts
-interface StrategyState {
-  sessionId: string;
-  round: number; // 0 = initial, increments per HITL cycle
-  extractedQuantities: Quantity[];
-  schemaDefinition: SchemaDefinition | null;
-  auditFlags: AuditFlag[];
-  userResponses: Record<string, string>;
-  status: "idle" | "extracting" | "building" | "auditing" | "hitl" | "complete" | "rejected";
-  iterationCount: number;
-  maxIterations: number; // = 2
-}
+### Data flow
 ```
-
-```python
-# backend/src/black_box/state/schema.py
-class StrategyState(BaseModel):
-    session_id: str
-    round: int = 0
-    extracted_quantities: list[Quantity] = []
-    schema_definition: Optional[SchemaDefinition] = None
-    audit_flags: list[AuditFlag] = []
-    user_responses: dict[str, str] = {}
-    status: Literal["idle", "extracting", "building", "auditing", "hitl", "complete", "rejected"] = "idle"
-    iteration_count: int = 0
-    max_iterations: int = 2
+hydrate_spec → structural_gate → cynical_auditor ─ router ─► mark_complete ─► END
+                                                  │          └► mark_rejected ─► END
+                                                  └► hitl_payload → hitl_gate (interrupt)
+                                                     Command(resume) → apply_answers ─► structural_gate (loop)
 ```
 
 ### Node Implementations
 
-- [ ] **Setup LangGraph DAG runtime and PostgreSQL checkpointing**
-  - **Implementation**: `langgraph.graph.StateGraph` with `postgres` checkpoint saver
-  - **Connection**: `DATABASE_URL` from `.env` → `AsyncEngine` → `AsyncSession`
-  - **Migration**: `alembic` for `langgraph_checkpoint` tables
-  - **Acceptance**: State persists across server restarts; `POST /api/v1/strategy/submit` creates a new session
+- [x] **Setup LangGraph DAG runtime + restart-resilient checkpointing**
+  - **Implementation**: `state/graph.py` (`build_graph` / `replay_park`),
+    `state/nodes.py`; MemorySaver + disk snapshot `out/strategy/`
+  - **Acceptance**: state survives a process restart; `replay_park`
+    restores the parked thread from disk and resume completes
 
-- [ ] **Node 1: Quant Extractor** (PydanticAI math/rule extractor with `NULL_AMBIGUOUS` flag)
-  - **Implementation**: PydanticAI agent with `NULL_AMBIGUOUS` tool flag; extracts numerical quantities, constraints, and rules from document chunks
-  - **Output**: `Quantity[]` with fields `{name, value, unit, ambiguity_level, source_chunk_id}`
-  - **Acceptance**: Extracts ≥90% of numerical values from a sample strategy doc; ambiguous values flagged `NULL_AMBIGUOUS`
+- [x] **strategylib — native, self-extending component library**
+  - **Implementation**: executable Python components (not JSON metadata):
+    `strategylib/components/{entry*,exit*,sizing*}`, index-only manifest
+    `manifest.json`, pure registry (`registry.py`: resolve / by_pillar /
+    matching / append_manifest). Curated components: `entry.ema_cross`,
+    `entry.vwap_band`, `exit.atr_stop`, `exit.time_exit`,
+    `sizing.fractional`, `sizing.atr_scaled`
+  - **Synthesis**: `strategylib/synthesize.py` compiles a spec `signal_ast`
+    subtree into a real module under `components/generated/`, runs a
+    hermetic self-check (import + shape + finiteness), and only a human
+    `approve` on the `missingPrimitive` card registers it
+    (`append_manifest`) — mandatory review before generated code enters the
+    trusted library
 
-- [ ] **Node 2: Schema Builder** (Pydantic V2 AST transpiler + SymPy math validation)
-  - **Implementation**: Pydantic V2 model auto-generated from extracted quantities; SymPy validates mathematical relationships
-  - **Output**: `SchemaDefinition` with Pydantic model class + SymPy expression tree
-  - **Acceptance**: Generated schema validates against sample data; SymPy confirms mathematical consistency
+- [x] **Node: Hydrator** (A6 spec → formulations)
+  - **Implementation**: `block_b/formulation.py::hydrate_spec` — resolves
+    entry/exit candidates from the registry by trigger `implements`,
+    designs the sweep grid from manifest param schemas (A6 `parameters`
+    carry intent/invariants, not bounds), caps variants at
+    `MAX_VARIANTS = 4`, flags missing pillars / unbacked primitives /
+    bad_data as structural errors
 
-- [ ] **Node 3: Cynical Auditor** (adversarial validator for lookahead, exit rules, bounds)
-  - **Implementation**: Adversarial agent that tries to find lookahead bias, missing exit rules, unbounded parameters
-  - **Output**: `AuditFlag[]` with fields `{type, severity, description, suggestion}`
-  - **Acceptance**: Detects all seeded lookahead biases in test documents; flags missing exit rules
+- [x] **Node: Structural Gate** (deterministic well-posedness, re-run on
+  every re-audit so an approved registration/human fix clears naturally)
 
-- [ ] **Enforce deterministic iteration cap** ($N \le 2$ retry loop)
-  - **Implementation**: LangGraph `ConditionalEdge` checking `iteration_count < max_iterations`
-  - **Acceptance**: Workflow terminates after exactly 2 retries regardless of audit results; `iteration_count` is monotonically increasing
+- [x] **Node: Cynical Auditor** (adversarial well-posedness — v1 rule-based)
+  - **Implementation**: `block_b/auditor.py` — lookahead/lead references in
+    the signal AST (negative lag/returns literals), missing exit, no
+    sizing, unbounded sweep params, degenerate EMA windows
+  - **Acceptance**: all seeded lookahead biases in test documents flagged;
+    missing exit rules flagged; `AuditFlag` contract unchanged so the
+    **LLM-backed adversarial pass is a documented node-internal swap** (not
+    built — ponytail: rule → LLM upgrade path)
 
-### Block B API Endpoints
-- [ ] `POST /api/v1/strategy/submit` — creates new strategy session, kicks off LangGraph DAG
-- [ ] `GET /api/v1/strategy/{session_id}/state` — retrieves current state
-- [ ] `POST /api/v1/strategy/{session_id}/resume` — injects user answers, resumes DAG
+- [x] **Node: HITL gate (LangGraph `interrupt()`)** — parks with a typed
+  card batch; `Command(resume={"answers": ...})` resumes
 
-**Acceptance Criteria**: Full DAG executes end-to-end with a sample document; state persists in PostgreSQL; each node produces expected output; iteration cap enforced.
+- [x] **Node: Apply Answers** (deterministic keyed mutations)
+  - **Implementation**: `block_b/hitl.py::apply_answers` — cards are typed
+    (missingPillar / missingPrimitive / remediation / universe), each with
+    a keyed `mutation` path (e.g. `variants.0.sizing`); `accept` re-derives
+    the full pillar payload (component + params + sweep grid) from the
+    registry; idempotent via `answers_applied` + `resume_key` (a duplicate
+    batch is a no-op and does not burn a round)
 
-**Dependencies**: Block A Step 1b+1c+1d must be stable (extraction depends on chunking + variable resolution + table validation).
+### Block B API Endpoints ✅ (frozen)
+- [x] `POST /api/v1/strategy/submit` — `{spec_id}` (curated A6 spec from
+  `out/block_a_specs.json`) or inline `{spec}` → new session, runs DAG to
+  first interrupt/terminal
+- [x] `GET /api/v1/strategy/{session_id}/state` — current state (live
+  checkpoint, or disk snapshot + re-park after restart)
+- [x] `GET /api/v1/strategy/{session_id}/stream` — SSE events
+  (`formulation` → `hitl_request` | `done`; synchronous snapshot stream
+  for v1, no sse-starlette dep)
+- [x] `POST /api/v1/strategy/{session_id}/resume` — `{answers: {card_id:
+  {action, value}}}`; idempotent per answers batch (identical batch →
+  graceful no-op)
+
+**Acceptance**: mechanical spec → `hitl` with missingPillar cards →
+`accept` resume → `complete` with swept variants; lookahead spec →
+`rejected` after the 2-round cap; restart replay resumes a parked session
+(covered by `tests/test_block_b.py` + `tests/strategylib/`).
 
 ---
 
-## Step 2: Angular HITL Gate & Streaming Layer
+## Step 2: Angular HITL Gate & Streaming Layer ⏳ (frontend paused)
 
 ### Technical Architecture
-- **Real-time transport**: FastAPI SSE (Server-Sent Events) for state updates + WebSocket for bidirectional HITL responses
-- **LangGraph interrupt**: `langgraph interrupt()` gate for state preservation during HITL pauses
-- **Angular components**: `StrategyBuilderComponent`, `HITLDialogComponent`, `StateStreamComponent`
+- **Real-time transport**: FastAPI SSE (`GET /strategy/{id}/stream`)
+  shipped; **WebSocket deferred** — the `resume` REST contract carries HITL
+  responses (API contract frozen, WS not required by it)
+- **LangGraph interrupt**: `interrupt()` gate ships (Step 1)
+- **Angular components**: `StrategyBuilderComponent`, `HITLDialogComponent`,
+  `StateStreamComponent` — paused on Stitch/Figma handoff
 
 ### Node Implementations
 
-- [ ] **Node 4: HITL Payload Generator** (batches missing rules & audit flags)
-  - **Implementation**: Collects `AuditFlag[]` and missing `Quantity` from Node 3 output; batches into HITL payload
-  - **Output**: `HITLPayload {missing_rules: Rule[], audit_flags: AuditFlag[], current_schema: SchemaDefinition}`
-  - **Acceptance**: Payload contains all actionable items; batches are ≤ 20 items per page
+- [x] **Node: HITL Payload Generator** (batches structural errors + audit
+  flags into typed ClarificationCards, ≤ 20 per batch)
+- [x] **Node: LangGraph `interrupt()` gate** — state saved at interrupt;
+  `POST /resume` resumes from checkpoint (idempotent)
+- [x] **SSE endpoint** `GET /api/v1/strategy/{session_id}/stream` — emits
+  `StateUpdate` events as SSE
+- [ ] **WebSocket endpoint** `WS /api/v1/strategy/{session_id}/ws` —
+  deferred (not required by the frozen REST contract; revisit with live
+  per-node streaming when async graph runs land)
 
-- [ ] **Node 5: LangGraph `interrupt()` gate for state persistence**
-  - **Implementation**: `interrupt()` call in LangGraph DAG after Node 3 → state saved to PostgreSQL → waits for user response
-  - **Acceptance**: State is persisted when interrupt fires; `POST /resume` correctly resumes from checkpoint
+### Angular Frontend Components (paused on Stitch/Figma handoff)
 
-- [ ] **Setup FastAPI SSE / WebSocket endpoints for real-time Angular communication**
-  - **SSE endpoint**: `GET /api/v1/strategy/{session_id}/stream` — emits `StateUpdate` events as SSE
-  - **WebSocket endpoint**: `WS /api/v1/strategy/{session_id}/ws` — bidirectional for HITL responses
-  - **Message format**: JSON `{"type": "state_update" | "hitl_request" | "hitl_response", "payload": {...}}`
-  - **Acceptance**: Angular receives real-time state updates; HITL responses flow back through WebSocket
+- [ ] **`StrategyBuilderComponent`** — main workflow display, shows current
+  state, variants, cards
+- [ ] **`HITLDialogComponent`** — typed cards + keyed answers, submits via
+  `POST /resume`
+- [ ] **`StateStreamComponent`** — SSE consumer, displays real-time state
+  updates, round counter
+- [ ] **`StrategyExportComponent`** — final export bundle display (Block D)
 
-- [ ] **Build State Resumption endpoint** (`POST /api/v1/strategy/resume`) to inject user answers
-  - **Implementation**: Accepts `{session_id, answers: Record<string, string>}`; injects into LangGraph state; resumes DAG
-  - **Acceptance**: User answers are merged into state; DAG continues from interrupt point
+**Acceptance Criteria** (post-handoff): user submits a curated spec → sees
+variants → answers typed HITL cards → state reaches complete/rejected.
+WebSocket latency requirement moot until WS ships.
 
-### Angular Frontend Components
-
-- [ ] **`StrategyBuilderComponent`** — main workflow display, shows current state, extracted quantities, schema
-- [ ] **`HITLDialogComponent`** — modal/dialog for missing rules & audit flags, submits responses via WebSocket
-- [ ] **`StateStreamComponent`** — SSE consumer, displays real-time state updates, iteration count
-- [ ] **`StrategyExportComponent`** — final export bundle display (links to Block D)
-
-**Acceptance Criteria**: User can upload document → see extraction → respond to HITL prompts → see state update in real-time → strategy reaches complete/rejected state. WebSocket latency < 100ms.
-
-**Dependencies**: Block B Step 1 (LangGraph core) must be functional.
+**Dependencies**: Block A Step 6 (`block_a_specs.json`) is the submit
+input; frontend depends on the frozen `StrategyState` contract.
 
 ---
 

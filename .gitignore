@@ -24,6 +24,7 @@ node_modules/
 build/
 dist-ssr/
 out-tsc/
+out/
 
 # IDE / OS
 .idea/

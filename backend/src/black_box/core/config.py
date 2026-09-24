@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     #: is on and the run supplies no explicit `--out` directory.
     block_a_trace_dir: Path = Path("out/traces")
 
+    # ------------------------------------------------------------------
+    # Block B — Formulation Engine
+    # ------------------------------------------------------------------
+    #: Directory for per-session strategy snapshots (`<session_id>.json`).
+    #: Crash-safe read store; live resume stays on the in-memory
+    #: checkpointer (Postgres checkpointing is the documented upgrade).
+    block_b_out_dir: Path = Path("out/strategy")
+
     @property
     def allowed_format_list(self) -> list[str]:
         return [f.strip().upper() for f in self.allowed_formats.split(",") if f.strip()]

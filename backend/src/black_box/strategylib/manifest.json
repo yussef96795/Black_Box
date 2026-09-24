@@ -1,0 +1,93 @@
+{
+  "description": "Executable strategy component library (Block B/C/D shared vocabulary). Single source of truth for reusable entry/exit/sizing components. The index only — implementation lives in impl modules.",
+  "version": "1.0.0",
+  "contract": {
+    "compute": "compute(data: dict[str, np.ndarray], params: dict[str, float]) -> np.ndarray",
+    "data_keys": ["open", "high", "low", "close", "volume"],
+    "notes": "All data arrays must share equal length. Components return a same-length signal array. Entry/exit arrays are +1/-1/0 signals; sizing arrays are per-bar position fractions."
+  },
+  "components": [
+    {
+      "id": "entry.ema_cross",
+      "name": "EMA Cross Entry",
+      "pillar": "entry",
+      "implements": ["IND_EMA", "TRIGGER_CROSS_ABOVE", "TRIGGER_CROSS_BELOW"],
+      "params": {
+        "fast": {"default": 10, "min": 1, "max": 100},
+        "slow": {"default": 30, "min": 2, "max": 300}
+      },
+      "requires": {"data_level": "ohlcv", "granularities": ["5m", "15m", "1h", "1d"]},
+      "impl": "black_box.strategylib.components.entry_ema_cross:compute",
+      "trust": "curated",
+      "version": "1.0.0"
+    },
+    {
+      "id": "entry.vwap_band",
+      "name": "VWAP Band Breakout Entry",
+      "pillar": "entry",
+      "implements": ["IND_VWAP", "TRIGGER_BAND_BREAKOUT"],
+      "params": {
+        "lookback": {"default": 20, "min": 5, "max": 200},
+        "k": {"default": 2.0, "min": 0.5, "max": 4.0}
+      },
+      "requires": {"data_level": "ohlcv", "granularities": ["5m", "15m", "1h", "1d"]},
+      "impl": "black_box.strategylib.components.entry_vwap_band:compute",
+      "trust": "curated",
+      "version": "1.0.0"
+    },
+    {
+      "id": "exit.atr_stop",
+      "name": "ATR Stop Loss Exit",
+      "pillar": "exit",
+      "implements": ["IND_ATR", "exit.stop_loss"],
+      "params": {
+        "atr_period": {"default": 14, "min": 1, "max": 100},
+        "k": {"default": 2.0, "min": 0.5, "max": 5.0}
+      },
+      "requires": {"data_level": "ohlcv", "granularities": ["5m", "15m", "1h", "1d"]},
+      "impl": "black_box.strategylib.components.exit_atr_stop:compute",
+      "trust": "curated",
+      "version": "1.0.0"
+    },
+    {
+      "id": "exit.time_exit",
+      "name": "Time-Based Exit",
+      "pillar": "exit",
+      "implements": ["exit.time_exit"],
+      "params": {
+        "bars": {"default": 20, "min": 1, "max": 200}
+      },
+      "requires": {"data_level": "ohlcv", "granularities": ["5m", "15m", "1h", "1d"]},
+      "impl": "black_box.strategylib.components.exit_time_exit:compute",
+      "trust": "curated",
+      "version": "1.0.0"
+    },
+    {
+      "id": "sizing.fractional",
+      "name": "Fractional Position Sizing",
+      "pillar": "sizing",
+      "implements": ["sizing.fractional"],
+      "params": {
+        "fraction": {"default": 0.01, "min": 0.001, "max": 0.5}
+      },
+      "requires": {"data_level": "ohlcv", "granularities": ["5m", "15m", "1h", "1d"]},
+      "impl": "black_box.strategylib.components.sizing_fractional:compute",
+      "trust": "curated",
+      "version": "1.0.0"
+    },
+    {
+      "id": "sizing.atr_scaled",
+      "name": "ATR-Scaled Risk Sizing",
+      "pillar": "sizing",
+      "implements": ["sizing.atr_scaled", "IND_ATR"],
+      "params": {
+        "risk_pct": {"default": 0.01, "min": 0.001, "max": 0.1},
+        "atr_period": {"default": 14, "min": 1, "max": 100}
+      },
+      "requires": {"data_level": "ohlcv", "granularities": ["5m", "15m", "1h", "1d"]},
+      "impl": "black_box.strategylib.components.sizing_atr_scaled:compute",
+      "trust": "curated",
+      "version": "1.0.0"
+    }
+  ]
+}
