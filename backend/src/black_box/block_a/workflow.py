@@ -129,11 +129,21 @@ def build_block_a_graph(
         )
 
     def check_resources(state: BlockAState) -> dict[str, Any]:
-        extraction = PaperExtractionSchema.model_validate(state.extraction)
-        result: ResourceCheckResult = check_catalog(
-            extraction.datasets_used, catalog_path
+        # Schema drift on re-validation (A1 output no longer round-trips) is a
+        # recoverable failure like an exhausted-retry LLM stage: surface it as
+        # a structured, terminal `llm_extraction_failed` state instead of an
+        # unhandled DAG crash (P1.2).
+        return _call_stage(
+            "check_resources",
+            lambda: {
+                "resource_check": check_catalog(
+                    PaperExtractionSchema.model_validate(
+                        state.extraction
+                    ).datasets_used,
+                    catalog_path,
+                ).model_dump(mode="json")
+            },
         )
-        return {"resource_check": result.model_dump(mode="json")}
 
     def hard_stop(state: BlockAState) -> dict[str, Any]:
         return {
@@ -209,7 +219,11 @@ def build_block_a_graph(
 
     def route_after_resource(
         state: BlockAState,
-    ) -> Literal["abstract_mechanism", "hard_stop"]:
+    ) -> Literal["abstract_mechanism", "hard_stop", "llm_failed"]:
+        if state.status == LLM_FAILED_STATUS:
+            # check_resources surfaced a structured failure (P1.2) — do NOT
+            # overwrite it with a resource verdict; take the terminal edge.
+            return "llm_failed"
         if (
             state.resource_check
             and ResourceCheckResult.model_validate(state.resource_check).all_available
@@ -235,8 +249,9 @@ def build_block_a_graph(
     workflow.set_entry_point("parse_document")
     workflow.add_edge("parse_document", "extract_requirements")
     # After every LLM stage: exhausted retries → terminal `llm_failed`, else
-    # continue. Only the Stage A3 catalog check may hard-stop (it does NOT go
-    # through this router).
+    # continue. Only the Stage A3 catalog check may hard-stop; its own
+    # re-validation drift is routed via `route_after_resource` to the same
+    # terminal edge.
     workflow.add_conditional_edges(
         "extract_requirements",
         _llm_router("check_resources"),
@@ -245,7 +260,11 @@ def build_block_a_graph(
     workflow.add_conditional_edges(
         "check_resources",
         route_after_resource,
-        {"abstract_mechanism": "abstract_mechanism", "hard_stop": "hard_stop"},
+        {
+            "abstract_mechanism": "abstract_mechanism",
+            "hard_stop": "hard_stop",
+            "llm_failed": "llm_failed",
+        },
     )
     workflow.add_conditional_edges(
         "abstract_mechanism",

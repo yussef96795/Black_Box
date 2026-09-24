@@ -159,6 +159,52 @@ def test_dag_hard_stop_resource_insufficient(tmp_path: Path) -> None:
     assert final.abstraction is None  # causal stages never ran
 
 
+def test_dag_check_resources_schema_drift_is_structured(tmp_path, monkeypatch) -> None:
+    """Extraction that fails re-validation inside check_resources becomes a
+    structured terminal failure (stage_error recorded), not an unhandled
+    crash — and does NOT get overwritten by a resource verdict (P1.2)."""
+    catalog = build_catalog(tmp_path / "catalog.parquet", rows=CATALOG_ROWS)
+    evaluator, _ = fake_evaluator(
+        extraction=vwap_extraction(),
+        abstraction=vwap_abstraction(),
+        annotations=vwap_annotations(slippage=True),
+    )
+    real_validate = PaperExtractionSchema.model_validate
+
+    def drift_on_dump(obj):
+        # check_resources re-validates the JSON-dumped extraction (a dict);
+        # the fake client hands over already-validated model instances.
+        if isinstance(obj, dict):
+            raise ValidationError.from_exception_data(
+                "PaperExtractionSchema",
+                [
+                    {
+                        "type": "value_error",
+                        "loc": ("core_mechanism",),
+                        "msg": "schema drift",
+                        "input": None,
+                        "ctx": {"error": ValueError("schema drift")},
+                    }
+                ],
+            )
+        return real_validate(obj)
+
+    monkeypatch.setattr(
+        PaperExtractionSchema, "model_validate", staticmethod(drift_on_dump)
+    )
+    graph = _graph(evaluator, catalog)
+    final = BlockAState.model_validate(
+        graph.invoke(
+            BlockAState(paper_id="p3", source_path="paper.md"),
+            config={"configurable": {"thread_id": "p3"}},
+        )
+    )
+    assert final.status == "llm_extraction_failed"
+    assert final.stage_error["stage"] == "check_resources"
+    assert final.stage_error["error_type"] == "ValidationError"
+    assert final.specs == []
+
+
 def test_dag_vacuous_empty_datasets_passes_without_specs(tmp_path: Path) -> None:
     """No datasets_used → no verdicts → compiler emits nothing, no hard stop."""
     catalog = build_catalog(tmp_path / "catalog.parquet", rows=CATALOG_ROWS)
