@@ -275,6 +275,25 @@ def secondary_signal_ast(secondary: str) -> GenericPrimitiveNode:
     )
 
 
+def pick_secondary_signal(
+    indicators: list[str], registry: dict[str, list[str]]
+) -> str | None:
+    """Deterministic Tier 3 augmentation signal.
+
+    Secondary = the first registry indicator the paper does NOT already use
+    (complementarity), in registry declaration order. Vocabulary comes from
+    the registry and the choice from the extracted candidate set — no
+    hardcoded fallback pair — so the augmentation adds a distinct predictive
+    signal and stays deterministic. `None` when every registry indicator is
+    already used by the paper.
+    """
+    detected = set(indicators)
+    for candidate in registry["indicators"]:
+        if candidate not in detected:
+            return candidate
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Catalog helpers (Tier 2 generalization targets)
 # ---------------------------------------------------------------------------
@@ -400,10 +419,8 @@ def compile_specs(
         )
 
     # --- Tier 3: augmented with a secondary predictive signal ----------
-    secondary = (
-        "IND_VOLUME_DELTA" if "IND_VOLUME_DELTA" not in indicators else "IND_EMA"
-    )
-    if secondary in registry["indicators"]:
+    secondary = pick_secondary_signal(indicators, registry)
+    if secondary:
         candidates.append(
             ExecutableStrategySpec(
                 spec_id=_slug(entry, anchor, StrategyTier.TIER_3_AUGMENTED),
@@ -514,6 +531,7 @@ __all__ = [
     "load_registry",
     "map_entry_primitive",
     "map_exit_primitive",
+    "pick_secondary_signal",
     "primary_guard_filter",
     "risk_union",
     "secondary_signal_ast",

@@ -23,6 +23,7 @@ from black_box.block_a.spec_compiler import (
     load_registry,
     map_entry_primitive,
     map_exit_primitive,
+    pick_secondary_signal,
     primary_guard_filter,
     risk_union,
     validate_and_export,
@@ -109,6 +110,19 @@ def test_indicator_detection_deduped() -> None:
         "VWAP anchor with an EMA filter and ATR stops and volume delta", reg
     )
     assert inds == ["IND_VWAP", "IND_EMA", "IND_ATR", "IND_VOLUME_DELTA"]
+
+
+def test_pick_secondary_signal_complements_detected_set() -> None:
+    """Augmentation adds a registry indicator the paper does NOT already use."""
+    reg = load_registry()
+    # VWAP paper already uses VMAP + volume delta → first complement is EMA
+    assert pick_secondary_signal(["IND_VWAP", "IND_VOLUME_DELTA"], reg) == "IND_EMA"
+    # single detected indicator → complement, not a duplicate
+    assert pick_secondary_signal(["IND_EMA"], reg) == "IND_VWAP"
+    # every registry indicator already used → no augmentation
+    assert pick_secondary_signal([i for i in reg["indicators"]], reg) is None
+    # unknown ids are ignored (only registry vocabulary matters)
+    assert pick_secondary_signal(["IND_UNKNOWN"], reg) == "IND_VWAP"
 
 
 def test_timeframe_detection() -> None:
