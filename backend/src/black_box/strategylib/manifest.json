@@ -4,7 +4,7 @@
   "contract": {
     "compute": "compute(data: dict[str, np.ndarray], params: dict[str, float]) -> np.ndarray",
     "data_keys": ["open", "high", "low", "close", "volume"],
-    "notes": "All data arrays must share equal length. Components return a same-length signal array. Entry/exit arrays are +1/-1/0 signals; sizing arrays are per-bar position fractions."
+    "notes": "All data arrays must share equal length. Components return a same-length signal array. Entry/exit arrays are +1/-1/0 signals; sizing arrays are per-bar position fractions. Arrays are CuPy (GPU, when a CUDA device exists) or NumPy (fallback) — the compute contract is backend-agnostic."
   },
   "components": [
     {
@@ -47,7 +47,7 @@
       "requires": {"data_level": "ohlcv", "granularities": ["5m", "15m", "1h", "1d"]},
       "impl": "black_box.strategylib.components.exit_atr_stop:compute",
       "trust": "curated",
-      "version": "1.0.0"
+      "version": "2.0.0"
     },
     {
       "id": "exit.time_exit",
@@ -87,7 +87,7 @@
       "requires": {"data_level": "ohlcv", "granularities": ["5m", "15m", "1h", "1d"]},
       "impl": "black_box.strategylib.components.sizing_atr_scaled:compute",
       "trust": "curated",
-      "version": "1.0.0"
+      "version": "2.0.0"
     }
   ]
 }

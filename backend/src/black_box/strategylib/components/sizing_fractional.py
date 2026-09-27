@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import numpy as np
+from black_box.strategylib._backend import np
 
 
 def compute(data: dict[str, np.ndarray], params: dict[str, float]) -> np.ndarray:

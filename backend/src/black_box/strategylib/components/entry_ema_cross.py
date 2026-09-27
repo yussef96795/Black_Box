@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import numpy as np
-
-from black_box.strategylib.components._math import ema
+from black_box.strategylib._backend import np
+from black_box.strategylib._math import ema
 
 
 def compute(data: dict[str, np.ndarray], params: dict[str, float]) -> np.ndarray:

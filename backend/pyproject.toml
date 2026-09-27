@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "alembic",
+    "cupy-cuda12x>=14,<15",
     "docling[charts,pdf]>=2.129.0",
     "duckdb>=1.5.5",
     "fastapi>=0.141.1",

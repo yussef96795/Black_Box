@@ -7,10 +7,84 @@
     "TRIGGER_BAND_BREAKOUT"
   ],
   "indicators": [
-    "IND_VWAP",
-    "IND_EMA",
+    "IND_AD",
+    "IND_ADX",
+    "IND_ADX_MINUS_DI",
+    "IND_ADX_PLUS_DI",
+    "IND_AO",
+    "IND_ASI",
+    "IND_ASI_OSC",
+    "IND_ASI_SIGNAL",
     "IND_ATR",
-    "IND_VOLUME_DELTA"
+    "IND_BB",
+    "IND_BB_LOWER",
+    "IND_BB_UPPER",
+    "IND_CCI",
+    "IND_CHANDELIER",
+    "IND_CHANDELIER_SHORT",
+    "IND_CHOP",
+    "IND_CMF",
+    "IND_CONNORS_RSI",
+    "IND_COPPOCK",
+    "IND_DEMA",
+    "IND_DONCHIAN",
+    "IND_DONCHIAN_LOWER",
+    "IND_DONCHIAN_UPPER",
+    "IND_DPO",
+    "IND_EMA",
+    "IND_EOM",
+    "IND_FISHER",
+    "IND_GMMA",
+    "IND_GMMA_LONG1",
+    "IND_GMMA_LONG2",
+    "IND_GMMA_LONG3",
+    "IND_GMMA_LONG4",
+    "IND_GMMA_LONG5",
+    "IND_GMMA_SHORT2",
+    "IND_GMMA_SHORT3",
+    "IND_HMA",
+    "IND_HURST",
+    "IND_HV",
+    "IND_ICHIMOKU",
+    "IND_ICHIMOKU_CHIKOU",
+    "IND_ICHIMOKU_KIJUN",
+    "IND_ICHIMOKU_SENKOU_A",
+    "IND_ICHIMOKU_SENKOU_B",
+    "IND_KAMA",
+    "IND_KELTNER",
+    "IND_KELTNER_LOWER",
+    "IND_KELTNER_UPPER",
+    "IND_KVO",
+    "IND_MACD",
+    "IND_MACD_HIST",
+    "IND_MACD_SIGNAL",
+    "IND_MCGINLEY",
+    "IND_MFI",
+    "IND_OBV",
+    "IND_PSAR",
+    "IND_PSAR_REVERSE",
+    "IND_RCI",
+    "IND_ROC",
+    "IND_RSI",
+    "IND_SMA",
+    "IND_STD_ERROR",
+    "IND_STD_ERROR_LOWER",
+    "IND_STOCH",
+    "IND_STOCH_D",
+    "IND_STOCH_RSI",
+    "IND_SUPERTREND",
+    "IND_SUPERTREND_DIRECTION",
+    "IND_TEMA",
+    "IND_TRIX",
+    "IND_TSI",
+    "IND_UI",
+    "IND_VOLUME_OSC",
+    "IND_VOLUME_OSC_SIGNAL",
+    "IND_VWAP",
+    "IND_VWMA",
+    "IND_WILLIAMS_R",
+    "IND_WMA",
+    "IND_ZSCORE"
   ],
   "filters": [
     "FLT_TIME_OF_DAY",
@@ -19,71 +93,1123 @@
   ],
   "phrases": {
     "entry": [
-      ["band breakout", "TRIGGER_BAND_BREAKOUT"],
-      ["breakout of the band", "TRIGGER_BAND_BREAKOUT"],
-      ["break out of the band", "TRIGGER_BAND_BREAKOUT"],
-      ["cross above", "TRIGGER_CROSS_ABOVE"],
-      ["crosses above", "TRIGGER_CROSS_ABOVE"],
-      ["crossing above", "TRIGGER_CROSS_ABOVE"],
-      ["break above", "TRIGGER_CROSS_ABOVE"],
-      ["breaks above", "TRIGGER_CROSS_ABOVE"],
-      ["above the upper", "TRIGGER_CROSS_ABOVE"],
-      ["rises above", "TRIGGER_CROSS_ABOVE"],
-      ["reclaim", "TRIGGER_CROSS_ABOVE"],
-      ["cross below", "TRIGGER_CROSS_BELOW"],
-      ["crosses below", "TRIGGER_CROSS_BELOW"],
-      ["crossing below", "TRIGGER_CROSS_BELOW"],
-      ["break below", "TRIGGER_CROSS_BELOW"],
-      ["breaks below", "TRIGGER_CROSS_BELOW"],
-      ["below the lower", "TRIGGER_CROSS_BELOW"],
-      ["falls below", "TRIGGER_CROSS_BELOW"],
-      ["drops below", "TRIGGER_CROSS_BELOW"],
-      ["touch the lower", "TRIGGER_CROSS_BELOW"],
-      ["touches the lower", "TRIGGER_CROSS_BELOW"],
-      ["dips below", "TRIGGER_CROSS_BELOW"],
-      ["below the vwap", "TRIGGER_CROSS_BELOW"]
+      [
+        "band breakout",
+        "TRIGGER_BAND_BREAKOUT"
+      ],
+      [
+        "breakout of the band",
+        "TRIGGER_BAND_BREAKOUT"
+      ],
+      [
+        "break out of the band",
+        "TRIGGER_BAND_BREAKOUT"
+      ],
+      [
+        "cross above",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "crosses above",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "crossing above",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "break above",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "breaks above",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "above the upper",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "rises above",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "reclaim",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "cross below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "crosses below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "crossing below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "break below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "breaks below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "below the lower",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "falls below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "drops below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "touch the lower",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "touches the lower",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "dips below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "below the vwap",
+        "TRIGGER_CROSS_BELOW"
+      ]
     ],
     "exit": [
-      ["returns to the middle", "TRIGGER_CROSS_ABOVE"],
-      ["crosses back above", "TRIGGER_CROSS_ABOVE"],
-      ["cross back above", "TRIGGER_CROSS_ABOVE"],
-      ["reclaim", "TRIGGER_CROSS_ABOVE"],
-      ["crosses below", "TRIGGER_CROSS_BELOW"],
-      ["cross below", "TRIGGER_CROSS_BELOW"],
-      ["breaks below", "TRIGGER_CROSS_BELOW"],
-      ["break below", "TRIGGER_CROSS_BELOW"],
-      ["falls below", "TRIGGER_CROSS_BELOW"],
-      ["drops below", "TRIGGER_CROSS_BELOW"],
-      ["below the vwap", "TRIGGER_CROSS_BELOW"],
-      ["stop-loss", "TRIGGER_CROSS_BELOW"],
-      ["stop loss", "TRIGGER_CROSS_BELOW"],
-      ["trailing stop", "TRIGGER_CROSS_BELOW"],
-      ["band breakout", "TRIGGER_BAND_BREAKOUT"],
-      ["crosses above", "TRIGGER_CROSS_ABOVE"],
-      ["cross above", "TRIGGER_CROSS_ABOVE"]
+      [
+        "returns to the middle",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "crosses back above",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "cross back above",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "reclaim",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "crosses below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "cross below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "breaks below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "break below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "falls below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "drops below",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "below the vwap",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "stop-loss",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "stop loss",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "trailing stop",
+        "TRIGGER_CROSS_BELOW"
+      ],
+      [
+        "band breakout",
+        "TRIGGER_BAND_BREAKOUT"
+      ],
+      [
+        "crosses above",
+        "TRIGGER_CROSS_ABOVE"
+      ],
+      [
+        "cross above",
+        "TRIGGER_CROSS_ABOVE"
+      ]
     ],
     "indicators": [
-      ["vwap", "IND_VWAP"],
-      ["volume weighted average", "IND_VWAP"],
-      ["volume-weighted average", "IND_VWAP"],
-      ["ema", "IND_EMA"],
-      ["exponential moving average", "IND_EMA"],
-      ["moving average", "IND_EMA"],
-      ["bollinger", "IND_EMA"],
-      ["middle band", "IND_EMA"],
-      ["atr", "IND_ATR"],
-      ["average true range", "IND_ATR"],
-      ["volume delta", "IND_VOLUME_DELTA"],
-      ["cumulative delta", "IND_VOLUME_DELTA"],
-      ["delta volume", "IND_VOLUME_DELTA"],
-      ["order flow delta", "IND_VOLUME_DELTA"]
+      [
+        "moving average convergence divergence",
+        "IND_MACD"
+      ],
+      [
+        "moving average convergence divergence",
+        "IND_MACD_HIST"
+      ],
+      [
+        "moving average convergence divergence",
+        "IND_MACD_SIGNAL"
+      ],
+      [
+        "double exponential moving average",
+        "IND_DEMA"
+      ],
+      [
+        "triple exponential moving average",
+        "IND_TEMA"
+      ],
+      [
+        "kaufman adaptive moving average",
+        "IND_KAMA"
+      ],
+      [
+        "triple smoothed rate of change",
+        "IND_TRIX"
+      ],
+      [
+        "volume weighted moving average",
+        "IND_VWMA"
+      ],
+      [
+        "guppy multiple moving average",
+        "IND_GMMA"
+      ],
+      [
+        "guppy multiple moving average",
+        "IND_GMMA_LONG1"
+      ],
+      [
+        "guppy multiple moving average",
+        "IND_GMMA_LONG2"
+      ],
+      [
+        "guppy multiple moving average",
+        "IND_GMMA_LONG3"
+      ],
+      [
+        "guppy multiple moving average",
+        "IND_GMMA_LONG4"
+      ],
+      [
+        "guppy multiple moving average",
+        "IND_GMMA_LONG5"
+      ],
+      [
+        "guppy multiple moving average",
+        "IND_GMMA_SHORT2"
+      ],
+      [
+        "guppy multiple moving average",
+        "IND_GMMA_SHORT3"
+      ],
+      [
+        "volume weighted average price",
+        "IND_VWAP"
+      ],
+      [
+        "volume weighted average price",
+        "IND_VWMA"
+      ],
+      [
+        "detrended price oscillator",
+        "IND_DPO"
+      ],
+      [
+        "exponential moving average",
+        "IND_EMA"
+      ],
+      [
+        "triple exponential average",
+        "IND_TRIX"
+      ],
+      [
+        "accumulation distribution",
+        "IND_AD"
+      ],
+      [
+        "accumulation/distribution",
+        "IND_AD"
+      ],
+      [
+        "average directional index",
+        "IND_ADX"
+      ],
+      [
+        "average directional index",
+        "IND_ADX_MINUS_DI"
+      ],
+      [
+        "average directional index",
+        "IND_ADX_PLUS_DI"
+      ],
+      [
+        "klinger volume oscillator",
+        "IND_KVO"
+      ],
+      [
+        "linearly weighted average",
+        "IND_WMA"
+      ],
+      [
+        "rate of change oscillator",
+        "IND_ROC"
+      ],
+      [
+        "accumulation swing index",
+        "IND_ASI"
+      ],
+      [
+        "accumulation swing index",
+        "IND_ASI_OSC"
+      ],
+      [
+        "accumulation swing index",
+        "IND_ASI_SIGNAL"
+      ],
+      [
+        "standard deviation score",
+        "IND_ZSCORE"
+      ],
+      [
+        "volume oscillator signal",
+        "IND_VOLUME_OSC"
+      ],
+      [
+        "volume oscillator signal",
+        "IND_VOLUME_OSC_SIGNAL"
+      ],
+      [
+        "adaptive moving average",
+        "IND_KAMA"
+      ],
+      [
+        "commodity channel index",
+        "IND_CCI"
+      ],
+      [
+        "relative strength index",
+        "IND_RSI"
+      ],
+      [
+        "volume weighted average",
+        "IND_VWAP"
+      ],
+      [
+        "weighted moving average",
+        "IND_WMA"
+      ],
+      [
+        "ease of movement index",
+        "IND_EOM"
+      ],
+      [
+        "rank correlation index",
+        "IND_RCI"
+      ],
+      [
+        "historical volatility",
+        "IND_HV"
+      ],
+      [
+        "simple moving average",
+        "IND_SMA"
+      ],
+      [
+        "stochastic oscillator",
+        "IND_STOCH"
+      ],
+      [
+        "stochastic oscillator",
+        "IND_STOCH_D"
+      ],
+      [
+        "hurst exponent ratio",
+        "IND_HURST"
+      ],
+      [
+        "standard error bands",
+        "IND_STD_ERROR"
+      ],
+      [
+        "standard error bands",
+        "IND_STD_ERROR_LOWER"
+      ],
+      [
+        "hull moving average",
+        "IND_HMA"
+      ],
+      [
+        "realised volatility",
+        "IND_HV"
+      ],
+      [
+        "realized volatility",
+        "IND_HV"
+      ],
+      [
+        "true strength index",
+        "IND_TSI"
+      ],
+      [
+        "average true range",
+        "IND_ATR"
+      ],
+      [
+        "awesome oscillator",
+        "IND_AO"
+      ],
+      [
+        "chaikin money flow",
+        "IND_CMF"
+      ],
+      [
+        "ichimoku kinko hyo",
+        "IND_ICHIMOKU"
+      ],
+      [
+        "ichimoku kinko hyo",
+        "IND_ICHIMOKU_CHIKOU"
+      ],
+      [
+        "ichimoku kinko hyo",
+        "IND_ICHIMOKU_KIJUN"
+      ],
+      [
+        "ichimoku kinko hyo",
+        "IND_ICHIMOKU_SENKOU_A"
+      ],
+      [
+        "ichimoku kinko hyo",
+        "IND_ICHIMOKU_SENKOU_B"
+      ],
+      [
+        "money flow measure",
+        "IND_CMF"
+      ],
+      [
+        "directional index",
+        "IND_ADX"
+      ],
+      [
+        "directional index",
+        "IND_ADX_MINUS_DI"
+      ],
+      [
+        "directional index",
+        "IND_ADX_PLUS_DI"
+      ],
+      [
+        "on balance volume",
+        "IND_OBV"
+      ],
+      [
+        "on-balance volume",
+        "IND_OBV"
+      ],
+      [
+        "relative strength",
+        "IND_RSI"
+      ],
+      [
+        "volume oscillator",
+        "IND_VOLUME_OSC"
+      ],
+      [
+        "volume oscillator",
+        "IND_VOLUME_OSC_SIGNAL"
+      ],
+      [
+        "choppiness index",
+        "IND_CHOP"
+      ],
+      [
+        "cumulative delta",
+        "IND_OBV"
+      ],
+      [
+        "donchian channel",
+        "IND_DONCHIAN"
+      ],
+      [
+        "donchian channel",
+        "IND_DONCHIAN_LOWER"
+      ],
+      [
+        "donchian channel",
+        "IND_DONCHIAN_UPPER"
+      ],
+      [
+        "ease of movement",
+        "IND_EOM"
+      ],
+      [
+        "fisher transform",
+        "IND_FISHER"
+      ],
+      [
+        "mcginley dynamic",
+        "IND_MCGINLEY"
+      ],
+      [
+        "money flow index",
+        "IND_MFI"
+      ],
+      [
+        "order flow delta",
+        "IND_OBV"
+      ],
+      [
+        "rank correlation",
+        "IND_RCI"
+      ],
+      [
+        "stop and reverse",
+        "IND_PSAR"
+      ],
+      [
+        "stop and reverse",
+        "IND_PSAR_REVERSE"
+      ],
+      [
+        "bollinger bands",
+        "IND_BB"
+      ],
+      [
+        "bollinger bands",
+        "IND_BB_LOWER"
+      ],
+      [
+        "bollinger bands",
+        "IND_BB_UPPER"
+      ],
+      [
+        "chandelier exit",
+        "IND_CHANDELIER"
+      ],
+      [
+        "chandelier exit",
+        "IND_CHANDELIER_SHORT"
+      ],
+      [
+        "keltner channel",
+        "IND_KELTNER"
+      ],
+      [
+        "keltner channel",
+        "IND_KELTNER_LOWER"
+      ],
+      [
+        "keltner channel",
+        "IND_KELTNER_UPPER"
+      ],
+      [
+        "bollinger band",
+        "IND_BB"
+      ],
+      [
+        "bollinger band",
+        "IND_BB_LOWER"
+      ],
+      [
+        "bollinger band",
+        "IND_BB_UPPER"
+      ],
+      [
+        "hurst exponent",
+        "IND_HURST"
+      ],
+      [
+        "ichimoku cloud",
+        "IND_ICHIMOKU"
+      ],
+      [
+        "ichimoku cloud",
+        "IND_ICHIMOKU_CHIKOU"
+      ],
+      [
+        "ichimoku cloud",
+        "IND_ICHIMOKU_KIJUN"
+      ],
+      [
+        "ichimoku cloud",
+        "IND_ICHIMOKU_SENKOU_A"
+      ],
+      [
+        "ichimoku cloud",
+        "IND_ICHIMOKU_SENKOU_B"
+      ],
+      [
+        "moving average",
+        "IND_SMA"
+      ],
+      [
+        "rate of change",
+        "IND_ROC"
+      ],
+      [
+        "standard error",
+        "IND_STD_ERROR"
+      ],
+      [
+        "standard error",
+        "IND_STD_ERROR_LOWER"
+      ],
+      [
+        "standard score",
+        "IND_ZSCORE"
+      ],
+      [
+        "stochastic rsi",
+        "IND_STOCH_RSI"
+      ],
+      [
+        "composite rsi",
+        "IND_CONNORS_RSI"
+      ],
+      [
+        "coppock curve",
+        "IND_COPPOCK"
+      ],
+      [
+        "parabolic sar",
+        "IND_PSAR"
+      ],
+      [
+        "parabolic sar",
+        "IND_PSAR_REVERSE"
+      ],
+      [
+        "price channel",
+        "IND_DONCHIAN"
+      ],
+      [
+        "price channel",
+        "IND_DONCHIAN_LOWER"
+      ],
+      [
+        "price channel",
+        "IND_DONCHIAN_UPPER"
+      ],
+      [
+        "delta volume",
+        "IND_OBV"
+      ],
+      [
+        "percent rank",
+        "IND_RCI"
+      ],
+      [
+        "volume delta",
+        "IND_OBV"
+      ],
+      [
+        "connors rsi",
+        "IND_CONNORS_RSI"
+      ],
+      [
+        "super trend",
+        "IND_SUPERTREND"
+      ],
+      [
+        "super trend",
+        "IND_SUPERTREND_DIRECTION"
+      ],
+      [
+        "swing index",
+        "IND_ASI"
+      ],
+      [
+        "swing index",
+        "IND_ASI_OSC"
+      ],
+      [
+        "swing index",
+        "IND_ASI_SIGNAL"
+      ],
+      [
+        "ulcer index",
+        "IND_UI"
+      ],
+      [
+        "williams %r",
+        "IND_WILLIAMS_R"
+      ],
+      [
+        "chandelier",
+        "IND_CHANDELIER"
+      ],
+      [
+        "chandelier",
+        "IND_CHANDELIER_SHORT"
+      ],
+      [
+        "choppiness",
+        "IND_CHOP"
+      ],
+      [
+        "money flow",
+        "IND_MFI"
+      ],
+      [
+        "stochastic",
+        "IND_STOCH"
+      ],
+      [
+        "stochastic",
+        "IND_STOCH_D"
+      ],
+      [
+        "supertrend",
+        "IND_SUPERTREND"
+      ],
+      [
+        "supertrend",
+        "IND_SUPERTREND_DIRECTION"
+      ],
+      [
+        "true range",
+        "IND_ATR"
+      ],
+      [
+        "volume osc",
+        "IND_VOLUME_OSC"
+      ],
+      [
+        "volume osc",
+        "IND_VOLUME_OSC_SIGNAL"
+      ],
+      [
+        "williams r",
+        "IND_WILLIAMS_R"
+      ],
+      [
+        "bollinger",
+        "IND_BB"
+      ],
+      [
+        "bollinger",
+        "IND_BB_LOWER"
+      ],
+      [
+        "bollinger",
+        "IND_BB_UPPER"
+      ],
+      [
+        "parabolic",
+        "IND_PSAR"
+      ],
+      [
+        "parabolic",
+        "IND_PSAR_REVERSE"
+      ],
+      [
+        "std error",
+        "IND_STD_ERROR"
+      ],
+      [
+        "std error",
+        "IND_STD_ERROR_LOWER"
+      ],
+      [
+        "stoch rsi",
+        "IND_STOCH_RSI"
+      ],
+      [
+        "donchian",
+        "IND_DONCHIAN"
+      ],
+      [
+        "donchian",
+        "IND_DONCHIAN_LOWER"
+      ],
+      [
+        "donchian",
+        "IND_DONCHIAN_UPPER"
+      ],
+      [
+        "ichimoku",
+        "IND_ICHIMOKU"
+      ],
+      [
+        "ichimoku",
+        "IND_ICHIMOKU_CHIKOU"
+      ],
+      [
+        "ichimoku",
+        "IND_ICHIMOKU_KIJUN"
+      ],
+      [
+        "ichimoku",
+        "IND_ICHIMOKU_SENKOU_A"
+      ],
+      [
+        "ichimoku",
+        "IND_ICHIMOKU_SENKOU_B"
+      ],
+      [
+        "mcginley",
+        "IND_MCGINLEY"
+      ],
+      [
+        "momentum",
+        "IND_ROC"
+      ],
+      [
+        "se bands",
+        "IND_STD_ERROR"
+      ],
+      [
+        "se bands",
+        "IND_STD_ERROR_LOWER"
+      ],
+      [
+        "williams",
+        "IND_WILLIAMS_R"
+      ],
+      [
+        "ad line",
+        "IND_AD"
+      ],
+      [
+        "awesome",
+        "IND_AO"
+      ],
+      [
+        "connors",
+        "IND_CONNORS_RSI"
+      ],
+      [
+        "coppock",
+        "IND_COPPOCK"
+      ],
+      [
+        "k and d",
+        "IND_STOCH"
+      ],
+      [
+        "k and d",
+        "IND_STOCH_D"
+      ],
+      [
+        "keltner",
+        "IND_KELTNER"
+      ],
+      [
+        "keltner",
+        "IND_KELTNER_LOWER"
+      ],
+      [
+        "keltner",
+        "IND_KELTNER_UPPER"
+      ],
+      [
+        "klinger",
+        "IND_KVO"
+      ],
+      [
+        "plus di",
+        "IND_ADX"
+      ],
+      [
+        "plus di",
+        "IND_ADX_MINUS_DI"
+      ],
+      [
+        "plus di",
+        "IND_ADX_PLUS_DI"
+      ],
+      [
+        "z score",
+        "IND_ZSCORE"
+      ],
+      [
+        "z-score",
+        "IND_ZSCORE"
+      ],
+      [
+        "fisher",
+        "IND_FISHER"
+      ],
+      [
+        "zscore",
+        "IND_ZSCORE"
+      ],
+      [
+        "cloud",
+        "IND_ICHIMOKU"
+      ],
+      [
+        "cloud",
+        "IND_ICHIMOKU_CHIKOU"
+      ],
+      [
+        "cloud",
+        "IND_ICHIMOKU_KIJUN"
+      ],
+      [
+        "cloud",
+        "IND_ICHIMOKU_SENKOU_A"
+      ],
+      [
+        "cloud",
+        "IND_ICHIMOKU_SENKOU_B"
+      ],
+      [
+        "hurst",
+        "IND_HURST"
+      ],
+      [
+        "stoch",
+        "IND_STOCH"
+      ],
+      [
+        "stoch",
+        "IND_STOCH_D"
+      ],
+      [
+        "chop",
+        "IND_CHOP"
+      ],
+      [
+        "dema",
+        "IND_DEMA"
+      ],
+      [
+        "gmma",
+        "IND_GMMA"
+      ],
+      [
+        "gmma",
+        "IND_GMMA_LONG1"
+      ],
+      [
+        "gmma",
+        "IND_GMMA_LONG2"
+      ],
+      [
+        "gmma",
+        "IND_GMMA_LONG3"
+      ],
+      [
+        "gmma",
+        "IND_GMMA_LONG4"
+      ],
+      [
+        "gmma",
+        "IND_GMMA_LONG5"
+      ],
+      [
+        "gmma",
+        "IND_GMMA_SHORT2"
+      ],
+      [
+        "gmma",
+        "IND_GMMA_SHORT3"
+      ],
+      [
+        "kama",
+        "IND_KAMA"
+      ],
+      [
+        "macd",
+        "IND_MACD"
+      ],
+      [
+        "macd",
+        "IND_MACD_HIST"
+      ],
+      [
+        "macd",
+        "IND_MACD_SIGNAL"
+      ],
+      [
+        "psar",
+        "IND_PSAR"
+      ],
+      [
+        "psar",
+        "IND_PSAR_REVERSE"
+      ],
+      [
+        "tema",
+        "IND_TEMA"
+      ],
+      [
+        "trix",
+        "IND_TRIX"
+      ],
+      [
+        "vwap",
+        "IND_VWAP"
+      ],
+      [
+        "vwma",
+        "IND_VWMA"
+      ],
+      [
+        "a/d",
+        "IND_AD"
+      ],
+      [
+        "adx",
+        "IND_ADX"
+      ],
+      [
+        "adx",
+        "IND_ADX_MINUS_DI"
+      ],
+      [
+        "adx",
+        "IND_ADX_PLUS_DI"
+      ],
+      [
+        "asi",
+        "IND_ASI"
+      ],
+      [
+        "asi",
+        "IND_ASI_OSC"
+      ],
+      [
+        "asi",
+        "IND_ASI_SIGNAL"
+      ],
+      [
+        "atr",
+        "IND_ATR"
+      ],
+      [
+        "cci",
+        "IND_CCI"
+      ],
+      [
+        "cmf",
+        "IND_CMF"
+      ],
+      [
+        "dpo",
+        "IND_DPO"
+      ],
+      [
+        "ema",
+        "IND_EMA"
+      ],
+      [
+        "eom",
+        "IND_EOM"
+      ],
+      [
+        "hma",
+        "IND_HMA"
+      ],
+      [
+        "kvo",
+        "IND_KVO"
+      ],
+      [
+        "mfi",
+        "IND_MFI"
+      ],
+      [
+        "obv",
+        "IND_OBV"
+      ],
+      [
+        "rci",
+        "IND_RCI"
+      ],
+      [
+        "roc",
+        "IND_ROC"
+      ],
+      [
+        "rsi",
+        "IND_RSI"
+      ],
+      [
+        "sma",
+        "IND_SMA"
+      ],
+      [
+        "tsi",
+        "IND_TSI"
+      ],
+      [
+        "wma",
+        "IND_WMA"
+      ],
+      [
+        "%r",
+        "IND_WILLIAMS_R"
+      ],
+      [
+        "ao",
+        "IND_AO"
+      ],
+      [
+        "bb",
+        "IND_BB"
+      ],
+      [
+        "bb",
+        "IND_BB_LOWER"
+      ],
+      [
+        "bb",
+        "IND_BB_UPPER"
+      ],
+      [
+        "hv",
+        "IND_HV"
+      ],
+      [
+        "ui",
+        "IND_UI"
+      ]
     ]
   },
   "risk_guards": [
-    {"tag": "EXECUTION_SLIPPAGE_HEAVY", "filter": "FLT_VOLUME_RATIO"},
-    {"tag": "LOW_LIQUIDITY_FRAGILITY", "filter": "FLT_VOLUME_RATIO"},
-    {"tag": "HIGH_SESSION_SENSITIVITY", "filter": "FLT_TIME_OF_DAY"},
-    {"tag": "PARAMETRIC_OVERFIT_RISK", "filter": "FLT_VOLATILITY_THRESHOLD"}
+    {
+      "tag": "EXECUTION_SLIPPAGE_HEAVY",
+      "filter": "FLT_VOLUME_RATIO"
+    },
+    {
+      "tag": "LOW_LIQUIDITY_FRAGILITY",
+      "filter": "FLT_VOLUME_RATIO"
+    },
+    {
+      "tag": "HIGH_SESSION_SENSITIVITY",
+      "filter": "FLT_TIME_OF_DAY"
+    },
+    {
+      "tag": "PARAMETRIC_OVERFIT_RISK",
+      "filter": "FLT_VOLATILITY_THRESHOLD"
+    }
   ],
-  "data_series": ["open", "high", "low", "close", "volume"]
+  "data_series": [
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume"
+  ]
 }

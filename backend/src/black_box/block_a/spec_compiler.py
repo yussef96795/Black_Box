@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -107,21 +108,32 @@ _EXIT_PHRASES: tuple[tuple[str, str], ...] = (
     ("cross above", "TRIGGER_CROSS_ABOVE"),
 )
 
+#: Fallback indicator phrase table, used only when the registry JSON has no
+#: ``phrases.indicators`` key (e.g. a minimal per-spec registry).
+#:
+#: The real table is *generated* from the strategylib indicator registry — see
+#: ``strategylib/indicators/_generate.py`` — and holds 229 rows covering all 78
+#: feed ids. This stays deliberately small rather than mirroring it: a second
+#: hand-maintained copy of a generated table is a drift bug waiting to happen,
+#: and the fallback's only job is to keep the four indicators the shipped seed
+#: catalog actually uses resolvable without the registry. It spells the ids the
+#: current registry uses, not the pre-registry ones: ``detect_indicators`` drops
+#: any row whose id is absent from ``registry["indicators"]``, so keeping the old
+#: ``IND_VOLUME_DELTA`` here would have made these four rows dead weight. The
+#: legacy *phrases* survive via IND_OBV's synonym list.
 _INDICATOR_PHRASES: tuple[tuple[str, str], ...] = (
-    ("vwap", "IND_VWAP"),
-    ("volume weighted average", "IND_VWAP"),
     ("volume-weighted average", "IND_VWAP"),
-    ("ema", "IND_EMA"),
+    ("volume weighted average", "IND_VWAP"),
+    ("vwap", "IND_VWAP"),
     ("exponential moving average", "IND_EMA"),
+    ("ema", "IND_EMA"),
     ("moving average", "IND_EMA"),
-    ("bollinger", "IND_EMA"),
-    ("middle band", "IND_EMA"),
-    ("atr", "IND_ATR"),
     ("average true range", "IND_ATR"),
-    ("volume delta", "IND_VOLUME_DELTA"),
-    ("cumulative delta", "IND_VOLUME_DELTA"),
-    ("delta volume", "IND_VOLUME_DELTA"),
-    ("order flow delta", "IND_VOLUME_DELTA"),
+    ("atr", "IND_ATR"),
+    ("volume delta", "IND_OBV"),
+    ("cumulative delta", "IND_OBV"),
+    ("delta volume", "IND_OBV"),
+    ("order flow delta", "IND_OBV"),
 )
 
 _TIMEFRAME_RE = re.compile(
@@ -221,33 +233,84 @@ def _resolve_phrases(
     return tuple((str(phrase), str(primitive)) for phrase, primitive in pairs)
 
 
-def map_entry_primitive(text: str, registry: dict[str, Any]) -> str:
+@lru_cache(maxsize=512)
+def _phrase_pattern(phrase: str) -> re.Pattern[str]:
+    """Word-boundary matcher for one phrase, cached.
+
+    Boundary matching rather than plain substring, because the indicator table is
+    full of acronyms and an acronym is a substring of unrelated words: "rsi"
+    occurs inside "re-version", and "ui" inside "q-uiet". Both were found by the
+    test suite, not by reading the code, which is the argument for the extra
+    complexity.
+
+    Boundaries are "not an alphanumeric character" on each side rather than
+    ``\\b``, so a phrase that starts or ends in a symbol still matches — the
+    table has "williams %r" and "a/d" in it, and ``\\b`` is wrong against a
+    leading ``%``. The trailing ``s?`` keeps plurals working
+    ("volume weighted averages").
+    """
+    return re.compile(rf"(?<![a-z0-9]){re.escape(phrase)}s?(?![a-z0-9])", re.IGNORECASE)
+
+
+def _phrase_in(phrase: str, lowered: str) -> bool:
+    """True when ``phrase`` occurs in ``lowered`` as a whole word (or plural)."""
+    return _phrase_pattern(phrase).search(lowered) is not None
+
+
+def _map_trigger(
+    text: str,
+    registry: dict[str, Any],
+    key: str,
+    fallback: tuple[tuple[str, str], ...],
+    default: str,
+) -> str:
+    """First phrase-table match confined to registry-backed trigger primitives."""
     lowered = text.lower()
-    for phrase, primitive in _resolve_phrases(registry, "entry", _ENTRY_PHRASES):
-        if phrase in lowered and primitive in registry["triggers"]:
+    for phrase, primitive in _resolve_phrases(registry, key, fallback):
+        if _phrase_in(phrase, lowered) and primitive in registry["triggers"]:
             return primitive
-    return "TRIGGER_CROSS_ABOVE"  # documented fallback
+    return default
+
+
+def map_entry_primitive(text: str, registry: dict[str, Any]) -> str:
+    # documented fallback
+    return _map_trigger(text, registry, "entry", _ENTRY_PHRASES, "TRIGGER_CROSS_ABOVE")
 
 
 def map_exit_primitive(text: str, registry: dict[str, Any]) -> str:
-    lowered = text.lower()
-    for phrase, primitive in _resolve_phrases(registry, "exit", _EXIT_PHRASES):
-        if phrase in lowered and primitive in registry["triggers"]:
-            return primitive
-    return "TRIGGER_CROSS_BELOW"  # documented fallback (protective bias)
+    # documented fallback (protective bias)
+    return _map_trigger(text, registry, "exit", _EXIT_PHRASES, "TRIGGER_CROSS_BELOW")
 
 
 def detect_indicators(text: str, registry: dict[str, Any]) -> list[str]:
+    """Feed ids mentioned in ``text``, most specific phrase first.
+
+    Two rules, both of which the test suite found the hard way.
+
+    **Word boundaries.** Matching is an acronym-aware regex (see
+    :func:`_phrase_pattern`), because a plain substring scan reads "rsi" out of
+    "reversion" and "ui" out of "quiet".
+
+    **Subsumption.** A phrase contained in a longer phrase that already matched is
+    skipped: "exponential moving average" *contains* "moving average", and
+    without this a paper asking for an EMA would also get a simple moving average
+    it never mentioned. The table is ordered longest-first so the specific phrase
+    is seen first and gets the chance to claim its substring — that ordering is
+    generated by ``strategylib.indicators.phrase_table()`` and is load-bearing,
+    not cosmetic.
+    """
     lowered = text.lower()
     found: list[str] = []
+    claimed: list[str] = []
     for phrase, primitive in _resolve_phrases(
         registry, "indicators", _INDICATOR_PHRASES
     ):
-        if (
-            phrase in lowered
-            and primitive in registry["indicators"]
-            and primitive not in found
-        ):
+        if primitive not in registry["indicators"] or not _phrase_in(phrase, lowered):
+            continue
+        if any(phrase in longer for longer in claimed):
+            continue
+        claimed.append(phrase)
+        if primitive not in found:
             found.append(primitive)
     return found
 
@@ -344,7 +407,7 @@ def validate_ast_registry(
 def secondary_signal_ast(secondary: str) -> GenericPrimitiveNode:
     """Tier 3 predictive-signal tree: `ZScore(<secondary indicator>)`.
 
-    The standardized secondary signal (e.g. IND_VOLUME_DELTA) — flat
+    The standardized secondary signal (e.g. IND_OBV) — flat
     `parameters.secondary_signal` remains the execution projection.
     """
     return OperatorNode(

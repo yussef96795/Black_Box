@@ -18,11 +18,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-try:
-    import numpy as np
-except ImportError:  # pragma: no cover — runtime dep, present in the venv
-    np = None  # type: ignore[assignment]
-
 MANIFEST_PATH = Path(__file__).resolve().parent / "manifest.json"
 
 

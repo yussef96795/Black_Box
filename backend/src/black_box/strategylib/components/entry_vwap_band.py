@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import numpy as np
-
-from black_box.strategylib.components._math import rolling_std
+from black_box.strategylib._backend import np
+from black_box.strategylib._math import rolling_std
 
 
 def compute(data: dict[str, np.ndarray], params: dict[str, float]) -> np.ndarray:
@@ -16,7 +15,10 @@ def compute(data: dict[str, np.ndarray], params: dict[str, float]) -> np.ndarray
 
     cum_v = np.cumsum(volume)
     cum_pv = np.cumsum(close * volume)
-    vwap = np.divide(cum_pv, cum_v, out=np.zeros_like(close), where=cum_v > 0)
+    # ponytail: cupy ufuncs reject numpy's `where=` kwarg — guarded
+    # denominator + explicit mask is identical where valid, 0 where not.
+    mask = cum_v > 0
+    vwap = np.where(mask, cum_pv / np.where(mask, cum_v, 1.0), 0.0)
     width = k * rolling_std(close, window=lookback)
 
     signal = np.zeros(len(close))

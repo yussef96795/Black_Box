@@ -161,7 +161,7 @@ def test_ast_unknown_operator_rejected() -> None:
 
 def test_validate_ast_registry_resolves_and_rejects() -> None:
     reg = load_registry()
-    assert validate_ast_registry(secondary_signal_ast("IND_VOLUME_DELTA"), reg) == []
+    assert validate_ast_registry(secondary_signal_ast("IND_OBV"), reg) == []
     # OHLCV series and numeric window are allowed escape hatches.
     tree = OperatorNode.model_validate(
         {
@@ -218,7 +218,7 @@ def test_spec_with_signal_ast_round_trips() -> None:
         timeframe="1m",
         entry_trigger_primitive="TRIGGER_CROSS_ABOVE",
         exit_trigger_primitive="TRIGGER_CROSS_BELOW",
-        signal_ast=secondary_signal_ast("IND_VOLUME_DELTA"),
+        signal_ast=secondary_signal_ast("IND_OBV"),
     )
     payload = json.loads(spec.model_dump_json())
     assert payload["signal_ast"]["kind"] == "unary_op"

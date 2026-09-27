@@ -146,20 +146,25 @@ def test_indicator_detection_deduped() -> None:
     inds = detect_indicators(
         "VWAP anchor with an EMA filter and ATR stops and volume delta", reg
     )
-    assert inds == ["IND_VWAP", "IND_EMA", "IND_ATR", "IND_VOLUME_DELTA"]
+    # "volume delta" is a legacy synonym of IND_OBV, so the old paper vocabulary
+    # still resolves after the IND_VOLUME_DELTA → IND_OBV rename. Order is
+    # longest-phrase-first, and the table is generated, so it is pinned here.
+    assert inds == ["IND_OBV", "IND_VWAP", "IND_ATR", "IND_EMA"]
 
 
 def test_pick_secondary_signal_complements_detected_set() -> None:
     """Augmentation adds a registry indicator the paper does NOT already use."""
     reg = load_registry()
-    # VWAP paper already uses VWAP + volume delta → first complement is EMA
-    assert pick_secondary_signal(["IND_VWAP", "IND_VOLUME_DELTA"], reg) == "IND_EMA"
+    # Registry order is declaration order, and the generated table is sorted, so
+    # the first complement of any small detected set is the alphabetically first
+    # feed id. What matters is that it is *not* one the paper already used.
+    assert pick_secondary_signal(["IND_VWAP", "IND_OBV"], reg) == "IND_AD"
     # single detected indicator → complement, not a duplicate
-    assert pick_secondary_signal(["IND_EMA"], reg) == "IND_VWAP"
+    assert pick_secondary_signal(["IND_EMA"], reg) == "IND_AD"
     # every registry indicator already used → no augmentation
     assert pick_secondary_signal([i for i in reg["indicators"]], reg) is None
     # unknown ids are ignored (only registry vocabulary matters)
-    assert pick_secondary_signal(["IND_UNKNOWN"], reg) == "IND_VWAP"
+    assert pick_secondary_signal(["IND_UNKNOWN"], reg) == "IND_AD"
 
 
 def test_timeframe_detection() -> None:
@@ -282,7 +287,7 @@ def test_compile_full_matrix(catalog: Path) -> None:
     assert t0.filter_primitives == []
     assert t0.entry_trigger_primitive == "TRIGGER_CROSS_ABOVE"
     assert t0.exit_trigger_primitive == "TRIGGER_CROSS_BELOW"
-    assert set(t0.parameters["indicators"]) == {"IND_VWAP", "IND_VOLUME_DELTA"}
+    assert set(t0.parameters["indicators"]) == {"IND_VWAP", "IND_OBV"}
     assert "VWAP" in t0.causal_anchor_notes
 
     t1 = next(s for s in specs if s.tier == StrategyTier.TIER_1_PARAMETRIC)
@@ -298,8 +303,8 @@ def test_compile_full_matrix(catalog: Path) -> None:
 
     t3 = next(s for s in specs if s.tier == StrategyTier.TIER_3_AUGMENTED)
     assert (
-        t3.parameters["secondary_signal"] == "IND_EMA"
-    )  # IND_VOLUME_DELTA already present
+        t3.parameters["secondary_signal"] == "IND_AD"
+    )  # IND_VWAP/IND_OBV already present, so augmentation picks the first gap
 
 
 def test_spec_ids_and_dedup(catalog: Path) -> None:

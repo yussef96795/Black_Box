@@ -19,22 +19,33 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import numpy as np
 from pydantic import TypeAdapter
 
 from black_box.block_a.models import AST_OPERATORS, GenericPrimitiveNode
-from black_box.strategylib.components._math import (
-    ema,
-    rolling_mean,
-    rolling_std,
-    true_range,
-)
+from black_box.strategylib._backend import np
+from black_box.strategylib._math import ema, rolling_mean, rolling_std
+from black_box.strategylib.indicators import feed_ids, resolve_feed
 
 COMPONENTS_DIR = Path(__file__).resolve().parent / "components"
 GENERATED_DIR = COMPONENTS_DIR / "generated"
 
-_KNOWN_FEEDS = {"IND_EMA", "IND_ATR", "IND_VWAP", "IND_VOLUME_DELTA"}
+#: Every addressable feed id, straight from the indicator registry. This used to
+#: be a four-entry literal beside a hand-written if-chain that had to be extended
+#: in two places for every new indicator; now the registry is the only place an
+#: indicator is named, and a new one is resolvable the moment it is declared.
+_KNOWN_FEEDS = set(feed_ids())
 _KNOWN_TRANSFORMS = {"open", "high", "low", "close", "volume"}
+
+#: Legacy ids kept resolvable for ASTs serialized before the rename.
+#: `IND_VOLUME_DELTA` was always OBV under a misleading name —
+#: `cumsum(volume * sign(change(close)))` — and is now an alias for IND_OBV,
+#: whose name says what it computes. Nothing in the repo emits the old id
+#: anymore; the paper-parser side keeps its old *phrases* working through
+#: IND_OBV's synonym list instead (see `indicators/volume.py`).
+_LEGACY_FEEDS = {"IND_VOLUME_DELTA": "IND_OBV"}
+
+#: Param name the old chain used for the ATR window. IND_ATR calls it `period`.
+_LEGACY_PARAMS = {"IND_ATR": {"atr_period": "period"}}
 
 #: GenericPrimitiveNode is an Annotated union alias — no pydantic methods of
 #: its own, so validate through an explicit adapter (mirrors how the
@@ -48,24 +59,14 @@ def _feed(
     """Resolve a named feed (data series or registry indicator) to an array."""
     if name in _KNOWN_TRANSFORMS:
         return data[name].astype(float)
-    close = data["close"].astype(float)
-    if name == "IND_EMA":
-        return ema(close, int(params.get("span", 20)))
-    if name == "IND_ATR":
-        return ema(
-            true_range(data["high"].astype(float), data["low"].astype(float), close),
-            span=int(params.get("atr_period", 14)),
-        )
-    if name == "IND_VWAP":
-        volume = data["volume"].astype(float)
-        cum_v = np.cumsum(volume)
-        cum_pv = np.cumsum(close * volume)
-        return np.divide(cum_pv, cum_v, out=np.zeros_like(close), where=cum_v > 0)
-    if name == "IND_VOLUME_DELTA":
-        volume = data["volume"].astype(float)
-        direction = np.sign(np.diff(close, prepend=close[0]))
-        return np.cumsum(volume * direction)
-    raise ValueError(f"unsupported feed id: {name}")
+    target = _LEGACY_FEEDS.get(name, name)
+    if target not in _KNOWN_FEEDS:
+        raise ValueError(f"unsupported feed id: {name}")
+    renamed = {source: value for source, value in (params or {}).items()}
+    for source, replacement in _LEGACY_PARAMS.get(target, {}).items():
+        if source in renamed:
+            renamed[replacement] = renamed.pop(source)
+    return resolve_feed(target, data, renamed)
 
 
 def _apply(op: str, left: np.ndarray, right: np.ndarray | None = None) -> np.ndarray:
@@ -92,9 +93,8 @@ def _apply(op: str, left: np.ndarray, right: np.ndarray | None = None) -> np.nda
         shifted = np.nan_to_num(
             _apply("lag", left, np.array([n]) if right is not None else None), nan=1.0
         )
-        return (
-            np.divide(left, shifted, out=np.zeros_like(left), where=shifted != 0) - 1.0
-        )
+        mask = shifted != 0
+        return np.where(mask, left / np.where(mask, shifted, 1.0), 0.0) - 1.0
     if op == "abs":
         return np.abs(left)
     if op == "log":
@@ -106,13 +106,13 @@ def _apply(op: str, left: np.ndarray, right: np.ndarray | None = None) -> np.nda
             return left - right
         if op == "mul":
             return left * right
-        return np.divide(left, right, out=np.zeros_like(left), where=right != 0)
+        mask = right != 0
+        return np.where(mask, left / np.where(mask, right, 1.0), 0.0)
     if op == "ratio":
-        return (
-            np.divide(left, right, out=np.zeros_like(left), where=right != 0)
-            if right is not None
-            else left
-        )
+        if right is None:
+            return left
+        mask = right != 0
+        return np.where(mask, left / np.where(mask, right, 1.0), 0.0)
     raise ValueError(f"unsupported AST operator: {op}")
 
 
@@ -224,7 +224,7 @@ def _module_template(
         "\n"
         "import json\n"
         "\n"
-        "import numpy as np\n"
+        "from black_box.strategylib._backend import np\n"
         "\n"
         "from black_box.block_a.models import GenericPrimitiveNode\n"
         "from black_box.strategylib.synthesize import interpret\n"
@@ -249,13 +249,15 @@ def _self_check(component_id: str, module_path: Path) -> bool:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
+        # cupy's Generator has standard_normal/uniform but no `normal` alias —
+        # normal(mu, 1) == mu + standard_normal() (numpy-compatible).
         rng = np.random.default_rng(0)
         n = 200
         data = {
-            "open": rng.normal(100, 1, n).cumsum(),
-            "high": rng.normal(101, 1, n),
-            "low": rng.normal(99, 1, n),
-            "close": rng.normal(100, 1, n).cumsum(),
+            "open": (100 + rng.standard_normal(n)).cumsum(),
+            "high": 101 + rng.standard_normal(n),
+            "low": 99 + rng.standard_normal(n),
+            "close": (100 + rng.standard_normal(n)).cumsum(),
             "volume": rng.uniform(100, 1000, n),
         }
         out = module.compute(data, {})

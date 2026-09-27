@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import importlib.util
 
-import numpy as np
 import pytest
 
 from black_box.strategylib import append_manifest, by_pillar, matching, resolve
-from black_box.strategylib.components._math import ema
+from black_box.strategylib._backend import np
+from black_box.strategylib._math import ema
 from black_box.strategylib.registry import load_registry
 from black_box.strategylib.synthesize import (
     generate_from_primitive,
@@ -35,8 +35,10 @@ EXPECTED_IDS = [
 
 @pytest.fixture()
 def data() -> dict[str, np.ndarray]:
+    # cupy's Generator has standard_normal/uniform but no `normal` alias —
+    # normal(mu, 2) == mu + 2 * standard_normal() (numpy-compatible).
     rng = np.random.default_rng(7)
-    close = rng.normal(100, 2, N).cumsum()
+    close = (100 + 2 * rng.standard_normal(N)).cumsum()
     return {
         "open": close - 0.2,
         "high": close + 0.8,
