@@ -129,6 +129,17 @@ def _mentions(text: str, terms: list[str]) -> list[str]:
     return [t for t in terms if t in lowered]
 
 
+def _verdict(
+    rejected: bool, hitl: bool
+) -> Literal["PASSED", "REQUIRES_HITL", "REJECTED"]:
+    """Three-way checker verdict: any reject wins, else any HITL wins."""
+    if rejected:
+        return "REJECTED"
+    if hitl:
+        return "REQUIRES_HITL"
+    return "PASSED"
+
+
 def audit_dependencies(
     text: str, catalog_path: Path | None = None
 ) -> list[DataDependency]:
@@ -302,12 +313,7 @@ def audit(
     # 1. hard dependencies
     dependencies = audit_dependencies(text, catalog_path=catalog_path)
     dep_statuses = {d.status for d in dependencies}
-    if "missing" in dep_statuses:
-        dep_verdict: Literal["PASSED", "REQUIRES_HITL", "REJECTED"] = "REJECTED"
-    elif "partial" in dep_statuses:
-        dep_verdict = "REQUIRES_HITL"
-    else:
-        dep_verdict = "PASSED"
+    dep_verdict = _verdict("missing" in dep_statuses, "partial" in dep_statuses)
     checks.append(
         FeasibilityCheck(
             name="hard_dependencies",
@@ -321,12 +327,7 @@ def audit(
 
     # 2. algorithmic & compute
     models, compute_budget = audit_compute(text)
-    if models:
-        comp_verdict: Literal["PASSED", "REQUIRES_HITL", "REJECTED"] = "REJECTED"
-    elif compute_budget["hints"]:
-        comp_verdict = "REQUIRES_HITL"
-    else:
-        comp_verdict = "PASSED"
+    comp_verdict = _verdict(bool(models), bool(compute_budget["hints"]))
     checks.append(
         FeasibilityCheck(
             name="algorithmic_compute",
@@ -341,10 +342,7 @@ def audit(
     # 3. domain mapping
     mappings = audit_domain(text)
     weak = [m for m in mappings if m.confidence < 0.7]
-    if weak:
-        domain_verdict: Literal["PASSED", "REQUIRES_HITL", "REJECTED"] = "REQUIRES_HITL"
-    else:
-        domain_verdict = "PASSED"
+    domain_verdict = _verdict(False, bool(weak))
     checks.append(
         FeasibilityCheck(
             name="domain_mapping",
@@ -370,12 +368,10 @@ def audit(
     )
 
     # Aggregate: REJECTED > REQUIRES_HITL > PASSED
-    if any(c.status == "REJECTED" for c in checks):
-        status: Literal["PASSED", "REQUIRES_HITL", "REJECTED"] = "REJECTED"
-    elif any(c.status == "REQUIRES_HITL" for c in checks):
-        status = "REQUIRES_HITL"
-    else:
-        status = "PASSED"
+    status = _verdict(
+        any(c.status == "REJECTED" for c in checks),
+        any(c.status == "REQUIRES_HITL" for c in checks),
+    )
 
     summary = _summarize(status, checks)
     return FeasibilityResult(status=status, checks=checks, summary=summary)

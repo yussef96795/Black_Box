@@ -27,7 +27,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import traceback
-from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from black_box.block_a.models import (
@@ -40,17 +39,13 @@ from black_box.block_a.models import (
     StrategyAnnotation,
 )
 from black_box.block_a.operators import operator_prompt_block
-from black_box.block_a.traces import TraceWriter, json_safe
+from black_box.block_a.traces import TraceWriter, _now, json_safe
 from black_box.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 #: Chunk text cap per prompt so local models stay within context cheaply.
 MAX_CHUNK_CHARS = 12_000
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 class StructuredClient(Protocol):
@@ -192,13 +187,12 @@ class LLMEvaluator:
         max_attempts: int | None = None,
         is_last_attempt: bool = False,
     ) -> None:
-        self._trace_event(
+        self._raw_failure(
             "raw_error",
-            attempt=attempt_number,
+            error,
+            attempt_number=attempt_number,
             max_attempts=max_attempts,
             is_last_attempt=is_last_attempt,
-            error_type=type(error).__name__,
-            detail=str(error),
         )
 
     def _on_raw_last_attempt(
@@ -209,10 +203,29 @@ class LLMEvaluator:
         max_attempts: int | None = None,
         is_last_attempt: bool = False,
     ) -> None:
-        self._trace_event(
+        self._raw_failure(
             "last_attempt",
+            error,
+            attempt_number=attempt_number,
+            max_attempts=max_attempts,
+            is_last_attempt=is_last_attempt,
+        )
+
+    def _raw_failure(
+        self,
+        event: str,
+        error: Exception,
+        *,
+        attempt_number: int,
+        max_attempts: int | None,
+        is_last_attempt: bool,
+    ) -> None:
+        """Trace a failed completion attempt (hook-error or final retry)."""
+        self._trace_event(
+            event,
             attempt=attempt_number,
             max_attempts=max_attempts,
+            is_last_attempt=is_last_attempt,
             error_type=type(error).__name__,
             detail=str(error),
         )

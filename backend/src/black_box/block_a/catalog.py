@@ -43,153 +43,38 @@ CATALOG_COLUMNS = [
 
 #: Seed catalog — honest to the platform capability contract in
 #: `core/capabilities.py` (crypto L3/1m available; equity/rates unsupported).
-#: Symbols marked without L2 exercise the approved volume-delta proxy path.
+#: The three L2-capable symbols carry tick+1m/1h/1d rows; the two OHLCV-only
+#: symbols (no L2 / order flow) exercise the approved volume-delta proxy path.
+#: ponytail: rows generated from the two tables below instead of a 18-row
+#: literal — a new symbol lands in a table and `build_catalog` regenerates the
+#: parquet idempotently; the parquet, not this module, is the runtime truth.
+_L2_SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
+_L2_GRANULARITIES = ("tick", "1m", "1h", "1d")
+_OHLCV_ONLY_SYMBOLS = ("ADAUSDT", "DOGEUSDT")
+_OHLCV_GRANULARITIES = ("1m", "1h", "1d")
+
 DEFAULT_CATALOG_ROWS: list[dict[str, Any]] = [
     {
         "asset_class": "Crypto",
-        "symbol": "BTCUSDT",
-        "granularity": "tick",
+        "symbol": symbol,
+        "granularity": gran,
         "has_l2_book": True,
         "has_order_flow": True,
         "start_year": 2020,
-    },
+    }
+    for symbol in _L2_SYMBOLS
+    for gran in _L2_GRANULARITIES
+] + [
     {
         "asset_class": "Crypto",
-        "symbol": "BTCUSDT",
-        "granularity": "1m",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "BTCUSDT",
-        "granularity": "1h",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "BTCUSDT",
-        "granularity": "1d",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "ETHUSDT",
-        "granularity": "tick",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "ETHUSDT",
-        "granularity": "1m",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "ETHUSDT",
-        "granularity": "1h",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "ETHUSDT",
-        "granularity": "1d",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "SOLUSDT",
-        "granularity": "tick",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "SOLUSDT",
-        "granularity": "1m",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "SOLUSDT",
-        "granularity": "1h",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "SOLUSDT",
-        "granularity": "1d",
-        "has_l2_book": True,
-        "has_order_flow": True,
-        "start_year": 2020,
-    },
-    # OHLCV-only symbols (no L2 / order flow) — proxy path only.
-    {
-        "asset_class": "Crypto",
-        "symbol": "ADAUSDT",
-        "granularity": "1m",
+        "symbol": symbol,
+        "granularity": gran,
         "has_l2_book": False,
         "has_order_flow": False,
         "start_year": 2021,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "ADAUSDT",
-        "granularity": "1h",
-        "has_l2_book": False,
-        "has_order_flow": False,
-        "start_year": 2021,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "ADAUSDT",
-        "granularity": "1d",
-        "has_l2_book": False,
-        "has_order_flow": False,
-        "start_year": 2021,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "DOGEUSDT",
-        "granularity": "1m",
-        "has_l2_book": False,
-        "has_order_flow": False,
-        "start_year": 2021,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "DOGEUSDT",
-        "granularity": "1h",
-        "has_l2_book": False,
-        "has_order_flow": False,
-        "start_year": 2021,
-    },
-    {
-        "asset_class": "Crypto",
-        "symbol": "DOGEUSDT",
-        "granularity": "1d",
-        "has_l2_book": False,
-        "has_order_flow": False,
-        "start_year": 2021,
-    },
+    }
+    for symbol in _OHLCV_ONLY_SYMBOLS
+    for gran in _OHLCV_GRANULARITIES
 ]
 
 #: Approved Stage A3 proxy when L2 book is demanded but only OHLCV exists.

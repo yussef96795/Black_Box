@@ -31,8 +31,31 @@ console = Console()
 
 def render_specs(specs: list[ExecutableStrategySpec]) -> str:
     """Render the spec matrix as a rich table (returned as a rich renderable)."""
-    table = Table(title="Compiled Strategy Specifications (Tier 0–3)")
-    table.add_column("Spec ID", style="bold cyan", no_wrap=True)
+    return _spec_table(
+        specs,
+        title="Compiled Strategy Specifications (Tier 0–3)",
+        border="green",
+        show_id=True,
+    )
+
+
+def _render_single(spec: ExecutableStrategySpec, index: int, total: int) -> str:
+    return _spec_table(
+        [spec], title=f"Spec {index}/{total} — {spec.spec_id}", border="blue"
+    )
+
+
+def _spec_table(
+    specs: list[ExecutableStrategySpec],
+    *,
+    title: str,
+    border: str,
+    show_id: bool = False,
+) -> str:
+    """One rich table for the spec matrix; `show_id` adds the Spec ID column."""
+    table = Table(title=title)
+    if show_id:
+        table.add_column("Spec ID", style="bold cyan", no_wrap=True)
     table.add_column("Tier")
     table.add_column("Asset")
     table.add_column("Timeframe")
@@ -42,8 +65,8 @@ def render_specs(specs: list[ExecutableStrategySpec]) -> str:
     table.add_column("Risk tags", style="yellow")
 
     for spec in specs:
-        table.add_row(
-            spec.spec_id,
+        row: list[str] = [spec.spec_id] if show_id else []
+        row += [
             spec.tier.value.removeprefix("TIER_").replace("_", " "),
             spec.target_asset,
             spec.timeframe,
@@ -51,29 +74,9 @@ def render_specs(specs: list[ExecutableStrategySpec]) -> str:
             spec.exit_trigger_primitive,
             ", ".join(spec.filter_primitives) or "—",
             ", ".join(t.value for t in spec.risk_annotations) or "—",
-        )
-    return Panel(table, border_style="green")
-
-
-def _render_single(spec: ExecutableStrategySpec, index: int, total: int) -> str:
-    table = Table(title=f"Spec {index}/{total} — {spec.spec_id}")
-    table.add_column("Tier")
-    table.add_column("Asset")
-    table.add_column("Timeframe")
-    table.add_column("Entry")
-    table.add_column("Exit")
-    table.add_column("Filters")
-    table.add_column("Risk tags", style="yellow")
-    table.add_row(
-        spec.tier.value.removeprefix("TIER_").replace("_", " "),
-        spec.target_asset,
-        spec.timeframe,
-        spec.entry_trigger_primitive,
-        spec.exit_trigger_primitive,
-        ", ".join(spec.filter_primitives) or "—",
-        ", ".join(t.value for t in spec.risk_annotations) or "—",
-    )
-    return Panel(table, border_style="blue")
+        ]
+        table.add_row(*row)
+    return Panel(table, border_style=border)
 
 
 def _toggle_risk_tags(spec: ExecutableStrategySpec) -> ExecutableStrategySpec:
