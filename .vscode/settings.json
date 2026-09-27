@@ -1,0 +1,49 @@
+{
+  // Keep VS Code off the 62k files in .venv/ and node_modules/ (~7GB).
+  // git already skips these via .gitignore, but VS Code's watcher, search
+  // index and SCM view do not - that is what stalls the commit UI.
+  "files.watcherExclude": {
+    "**/.venv/**": true,
+    "**/venv/**": true,
+    "**/node_modules/**": true,
+    "**/__pycache__/**": true,
+    "**/.mypy_cache/**": true,
+    "**/.ruff_cache/**": true,
+    "**/.pytest_cache/**": true,
+    "**/dist/**": true,
+    "**/.angular/cache/**": true,
+    "**/target/**": true
+  },
+  "search.exclude": {
+    "**/.venv": true,
+    "**/venv": true,
+    "**/node_modules": true,
+    "**/__pycache__": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true,
+    "**/.pytest_cache": true,
+    "**/dist": true,
+    "**/.angular/cache": true,
+    "**/target": true
+  },
+  "files.exclude": {
+    "**/.venv": true,
+    "**/venv": true,
+    "**/__pycache__": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true,
+    "**/.pytest_cache": true
+  },
+
+  // Source Control panel: stop doing work that is not needed to commit.
+  "git.untrackedChanges": "hidden",
+  "git.autofetch": false,
+  "git.autoStash": false,
+  "git.pruneOnWindowChange": false,
+  "scm.diffDecorations": "gutter",
+  "scm.alwaysShowRepositories": false,
+
+  // Search over a 6.7GB venv is a second source of stalls.
+  "files.maxMemoryForSearch": 128,
+  "search.smartCase": true
+}

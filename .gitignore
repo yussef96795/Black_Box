@@ -14,6 +14,7 @@ htmlcov/
 .env
 .env.*
 !.env.example
+ssrn-4631351.pdf
 
 # Node / Angular (frontend also has its own .gitignore)
 node_modules/
