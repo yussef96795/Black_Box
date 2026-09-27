@@ -75,20 +75,47 @@ def _dedupe(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return kept
 
 
-def _pillar_card(*, pillar: str, variant_idx: int, evidence: str) -> dict[str, Any]:
-    options = [c.id for c in by_pillar(pillar)]
+def _card(
+    *,
+    card_type: str,
+    pillar: str,
+    title: str,
+    evidence: str,
+    proposal: dict[str, Any] | None,
+    options: list[str],
+    mutation: str,
+    required: bool = True,
+) -> dict[str, Any]:
+    """One typed clarification card.
+
+    ``card_id`` is deliberately absent here — `build_cards` batch-assigns
+    the round-scoped ids (``C-R{round}-NNN``) so builders never carry a
+    stale placeholder.
+    """
     return {
-        "card_id": "pending",
-        "type": "missingPillar",
+        "type": card_type,
         "pillar": pillar,
-        "title": f"Missing {pillar} pillar",
+        "title": title,
         "evidence": evidence,
-        "proposal": {"component_id": options[0] if options else ""},
+        "proposal": proposal,
         "options": options,
-        "mutation": f"variants.{variant_idx}.{pillar}",
-        "required": True,
+        "mutation": mutation,
+        "required": required,
         "state": "pending",
     }
+
+
+def _pillar_card(*, pillar: str, variant_idx: int, evidence: str) -> dict[str, Any]:
+    options = [c.id for c in by_pillar(pillar)]
+    return _card(
+        card_type="missingPillar",
+        pillar=pillar,
+        title=f"Missing {pillar} pillar",
+        evidence=evidence,
+        proposal={"component_id": options[0] if options else ""},
+        options=options,
+        mutation=f"variants.{variant_idx}.{pillar}",
+    )
 
 
 def _primitive_card(state: Any, err: dict[str, Any]) -> dict[str, Any]:
@@ -106,40 +133,34 @@ def _primitive_card(state: Any, err: dict[str, Any]) -> dict[str, Any]:
         )
     except ValueError as exc:
         preview = {"error": str(exc)}
-    return {
-        "card_id": "pending",
-        "type": "missingPrimitive",
-        "pillar": "codebase",
-        "title": f"Novel primitive: {primitive}",
-        "evidence": (
+    return _card(
+        card_type="missingPrimitive",
+        pillar="codebase",
+        title=f"Novel primitive: {primitive}",
+        evidence=(
             f"New signal {primitive} has vocabulary but no executable component. "
             "Review the synthesized module and approve registration."
         ),
-        "proposal": {"entry": preview, "replaces": err.get("suggestion", "")},
-        "options": ["synthesize", "abandon"],
-        "mutation": "",
-        "required": True,
-        "state": "pending",
-    }
+        proposal={"entry": preview, "replaces": err.get("suggestion", "")},
+        options=["synthesize", "abandon"],
+        mutation="",
+    )
 
 
 def _universe_card(state: Any) -> dict[str, Any]:
     spec = state.spec or {}
-    return {
-        "card_id": "pending",
-        "type": "universe",
-        "pillar": "universe",
-        "title": "Confirm trading universe / timeframe",
-        "evidence": "Spec data binding is incomplete or invalid.",
-        "proposal": {
+    return _card(
+        card_type="universe",
+        pillar="universe",
+        title="Confirm trading universe / timeframe",
+        evidence="Spec data binding is incomplete or invalid.",
+        proposal={
             "symbol": spec.get("target_asset", ""),
             "timeframe": spec.get("timeframe", ""),
         },
-        "options": [],
-        "mutation": "spec",
-        "required": True,
-        "state": "pending",
-    }
+        options=[],
+        mutation="spec",
+    )
 
 
 def _remediation_for_flag(
@@ -178,34 +199,28 @@ def _remediation_for_flag(
     elif ftype == "lookahead_bias":
         # No auto-fix: a future-shifted signal cannot be healed generically.
         # Re-audit persists the flag until the round cap rejects (honest).
-        return {
-            "card_id": "pending",
-            "type": "remediation",
-            "pillar": "risk",
-            "title": flag.get("description", "Lookahead bias in signal"),
-            "evidence": flag.get("suggestion", ""),
-            "proposal": None,
-            "options": ["accept", "reject"],
-            "mutation": "",
-            "required": True,
-            "state": "pending",
-        }
+        return _card(
+            card_type="remediation",
+            pillar="risk",
+            title=flag.get("description", "Lookahead bias in signal"),
+            evidence=flag.get("suggestion", ""),
+            proposal=None,
+            options=["accept", "reject"],
+            mutation="",
+        )
     else:
         return None
-    return {
-        "card_id": "pending",
-        "type": "remediation",
-        "pillar": "risk"
-        if mutation.endswith("params") or ".grid." in mutation
-        else pillar,
-        "title": flag.get("description", "Remediation required")[:120],
-        "evidence": flag.get("suggestion", ""),
-        "proposal": proposal,
-        "options": ["accept", "override"],
-        "mutation": mutation,
-        "required": True,
-        "state": "pending",
-    }
+    return _card(
+        card_type="remediation",
+        pillar=(
+            "risk" if mutation.endswith("params") or ".grid." in mutation else pillar
+        ),
+        title=flag.get("description", "Remediation required")[:120],
+        evidence=flag.get("suggestion", ""),
+        proposal=proposal,
+        options=["accept", "override"],
+        mutation=mutation,
+    )
 
 
 # ---------------------------------------------------------------------------
