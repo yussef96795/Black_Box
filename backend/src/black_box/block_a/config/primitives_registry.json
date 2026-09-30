@@ -80,6 +80,9 @@
     "IND_UI",
     "IND_VOLUME_OSC",
     "IND_VOLUME_OSC_SIGNAL",
+    "IND_VOL_GARMAN_KLASS",
+    "IND_VOL_PARKINSON",
+    "IND_VOL_YANG_ZHANG",
     "IND_VWAP",
     "IND_VWMA",
     "IND_WILLIAMS_R",
@@ -406,6 +409,10 @@
         "IND_CCI"
       ],
       [
+        "garman-klass volatility",
+        "IND_VOL_GARMAN_KLASS"
+      ],
+      [
         "relative strength index",
         "IND_RSI"
       ],
@@ -442,8 +449,16 @@
         "IND_STOCH_D"
       ],
       [
+        "yang-zhang volatility",
+        "IND_VOL_YANG_ZHANG"
+      ],
+      [
         "hurst exponent ratio",
         "IND_HURST"
+      ],
+      [
+        "parkinson volatility",
+        "IND_VOL_PARKINSON"
       ],
       [
         "standard error bands",
@@ -452,6 +467,10 @@
       [
         "standard error bands",
         "IND_STD_ERROR_LOWER"
+      ],
+      [
+        "high low volatility",
+        "IND_VOL_PARKINSON"
       ],
       [
         "hull moving average",
@@ -480,6 +499,10 @@
       [
         "chaikin money flow",
         "IND_CMF"
+      ],
+      [
+        "high-low estimator",
+        "IND_VOL_PARKINSON"
       ],
       [
         "ichimoku kinko hyo",
@@ -714,6 +737,14 @@
         "IND_OBV"
       ],
       [
+        "garman klass",
+        "IND_VOL_GARMAN_KLASS"
+      ],
+      [
+        "garman-klass",
+        "IND_VOL_GARMAN_KLASS"
+      ],
+      [
         "percent rank",
         "IND_RCI"
       ],
@@ -802,6 +833,14 @@
         "IND_WILLIAMS_R"
       ],
       [
+        "yang zhang",
+        "IND_VOL_YANG_ZHANG"
+      ],
+      [
+        "yang-zhang",
+        "IND_VOL_YANG_ZHANG"
+      ],
+      [
         "bollinger",
         "IND_BB"
       ],
@@ -822,6 +861,10 @@
         "IND_PSAR_REVERSE"
       ],
       [
+        "parkinson",
+        "IND_VOL_PARKINSON"
+      ],
+      [
         "std error",
         "IND_STD_ERROR"
       ],
@@ -832,6 +875,10 @@
       [
         "stoch rsi",
         "IND_STOCH_RSI"
+      ],
+      [
+        "yangzhang",
+        "IND_VOL_YANG_ZHANG"
       ],
       [
         "donchian",
@@ -948,6 +995,10 @@
       [
         "fisher",
         "IND_FISHER"
+      ],
+      [
+        "garman",
+        "IND_VOL_GARMAN_KLASS"
       ],
       [
         "zscore",

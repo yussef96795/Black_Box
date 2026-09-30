@@ -7,6 +7,18 @@ indices report *drawdown* and *return* dispersion instead. They are not
 interchangeable, and swapping one for another is the usual reason a "volatility
 filter" behaves unexpectedly.
 
+**The realized volatility family** — ``IND_HV``, ``IND_VOL_PARKINSON``,
+``IND_VOL_GARMAN_KLASS``, ``IND_VOL_YANG_ZHANG`` — lives here together for a
+reason beyond tidiness: the interesting property of that family is only visible
+in the comparison. Each estimates the same quantity, the annualized standard
+deviation of log returns, from progressively more of the bar, and each is a
+different bet about where the information lives. Close-to-close uses two prices
+and discards the rest; Parkinson uses the range; Garman-Klass adds the open so
+the open-to-close move is separated from the extremes; Yang-Zhang adds the prior
+close and weights the three variance components against each other by their
+sampling errors. Read one alone and it is a number; read them side by side and
+the choice becomes visible.
+
 One convention is load-bearing throughout: **ATR is Wilder's RMA, not an EMA.**
 TradingView's ``ta.atr`` uses alpha = 1/length, so at length 14 that is 0.071
 against the EMA's 0.133, and the two settle at visibly different levels. Every
@@ -19,6 +31,7 @@ from black_box.strategylib._backend import np
 from black_box.strategylib._kernels import running_max, running_min
 from black_box.strategylib._math import (
     as_float,
+    log_ratio,
     rma,
     rolling_max,
     rolling_mean,
@@ -30,11 +43,24 @@ from black_box.strategylib._math import (
 )
 from black_box.strategylib.indicators._registry import Data, P, indicator
 
-#: Floor for the log return's argument. A non-positive price is invalid input,
-#: but ``log(0)`` is ``-inf`` and one ``-inf`` poisons every later bar, because
-#: ``rolling_std`` is cumsum-based. Clamping trades an impossible value for a
-#: merely extreme one (~-27.6) that cannot destroy the series.
-_LOG_FLOOR = 1e-12
+#: ``2 ln 2 - 1`` — Garman-Klass's open/close de-biasing constant, and the term
+#: Yang-Zhang's overnight component is the other half of. Precomputed because it
+#: appears in two formulas and is a constant, not a parameter.
+_GK_COEF = 2.0 * float(np.log(2.0)) - 1.0
+
+
+def _sqrt_variance(variance, annualise: float):
+    """``sqrt(variance) * sqrt(annualise)``, refusing to invent a complex number.
+
+    The clamp is the point of this helper. A negative variance is not a rounding
+    artefact here, it is reachable on real data, and ``sqrt`` of it is a NaN that
+    appears in the *middle* of the series — which ``indicators/__init__.py`` calls
+    a contract violation rather than a warmup prefix, because every composition
+    built on the line is poisoned from that bar onward. Flooring at zero reports
+    "no variance in this window", which is what a negative estimate means once
+    you have already subtracted the open/close drift from the range.
+    """
+    return np.sqrt(np.maximum(variance, 0.0)) * float(annualise) ** 0.5
 
 
 @indicator(
@@ -110,109 +136,182 @@ def historical_volatility(
     close = as_float(data["close"])
     span = max(int(period), 2)
     previous = shift(close, 1, fill=close[0])
-    log_returns = np.log(np.maximum(safe_div(close, previous, fill=1.0), _LOG_FLOOR))
-    return rolling_std(log_returns, span) * float(annualise) ** 0.5
+    return rolling_std(log_ratio(close, previous), span) * float(annualise) ** 0.5
 
 
 @indicator(
-    "IND_UI",
+    "IND_VOL_PARKINSON",
     group="volatility",
-    params={"period": P(14, 2, 200)},
-    synonyms=("ulcer index", "ui"),
+    lines=("volatility",),
+    params={"period": P(20, 2, 500), "annualise": P(252, 1, 4000)},
+    requires=("high", "low"),
+    synonyms=(
+        "parkinson",
+        "parkinson volatility",
+        "high-low estimator",
+        "high low volatility",
+    ),
 )
-def ulcer(data: Data, *, period: int = 14) -> dict:
-    """Ulcer Index: the RMS of drawdown — how *painful* volatility is, not how big.
+def parkinson_volatility(data: Data, *, period: int = 20, annualise: int = 252) -> dict:
+    """Parkinson high-low volatility: the range is the estimator.
 
-    A high Ulcer with small bar-to-bar moves means a long grinding decline, which
-    is the regime a plain standard deviation rates as calm. The squaring is what
-    makes it an index of stress rather than of size; the outer square root brings
-    it back to price units.
+    ``sigma^2 = (1 / (4 ln2 N)) * sum( ln(H/L)^2 )``. The whole argument is that
+    over a bar the extremes are hit by a Brownian path, and the expected squared
+    log-range of such a path is proportional to the variance — so the range
+    carries more information about the bar's volatility than its two endpoints do.
+    At small bar counts that is a large enough gain to be worth the assumption.
+
+    The ``1 / (4 ln 2)`` is not a fudge factor: it is what makes the estimator
+    consistent with the variance of a driftless Brownian motion, and it is why
+    Parkinson needs no open and no close at all.
+
+    ponytail: no overnight correction, so a gap is read as volatility exactly
+    like a real move. Adding Yang-Zhang's overnight term would make this a
+    different estimator wearing this one's name — the gap handling is the reason
+    to reach for ``IND_VOL_YANG_ZHANG`` instead. The upgrade path is a new id, not
+    a new parameter here.
     """
-    close = as_float(data["close"])
+    high, low = as_float(data["high"]), as_float(data["low"])
     span = max(int(period), 2)
-    drawdown = 100.0 * (close / running_max(close) - 1.0)
-    return np.sqrt(rolling_mean(drawdown * drawdown, span))
+    log_range = log_ratio(high, low)
+    return {
+        "volatility": _sqrt_variance(
+            rolling_mean(log_range * log_range, span) / (4.0 * float(np.log(2.0))),
+            annualise,
+        )
+    }
 
 
 @indicator(
-    "IND_CHOP",
+    "IND_VOL_GARMAN_KLASS",
     group="volatility",
-    params={"period": P(14, 2, 200)},
-    requires=("high", "low", "close"),
-    synonyms=("choppiness index", "chop", "choppiness"),
+    lines=("volatility",),
+    params={"period": P(20, 2, 500), "annualise": P(252, 1, 4000)},
+    requires=("high", "low", "open", "close"),
+    synonyms=(
+        "garman-klass",
+        "garman klass",
+        "garman-klass volatility",
+        "garman",
+    ),
 )
-def choppiness(data: Data, *, period: int = 14) -> dict:
-    """Choppiness Index: ~0 is a clean trend, ~100 is pure noise.
+def garman_klass_volatility(
+    data: Data, *, period: int = 20, annualise: int = 252
+) -> dict:
+    """Garman-Klass: the range, minus the part the open-to-close move explains.
 
-    A log ratio of the summed true range against the actual window span, scaled
-    by ``log10(period)`` so the result lands near 100 for noise at any window
-    length. The true range is a *sum*, so a trending market's total range is large
-    relative to how far it actually went, while a choppy one is the reverse.
+    Per bar, ``0.5 * ln(H/L)^2 - (2 ln 2 - 1) * ln(C/O)^2``, averaged over the
+    window. The subtraction is the estimator's entire contribution: a bar can have
+    a wide range purely because it *trended* open-to-close, and that trend is
+    known rather than uncertain, so counting it as variance double-counts it. The
+    ``(2 ln 2 - 1)`` coefficient de-biases what remains.
 
-    ``safe_div``'s fill of 0 is floored before the log so a window with no
-    movement at all cannot produce ``log10(0)``; NaN in the warmup prefix
-    propagates through the clip as NaN, which is the honest answer there.
+    **The per-bar term is signed, and legitimately goes negative.** Whenever the
+    open-to-close move exceeds ``0.879 * ln(H/L)`` — a gap that dwarfs the
+    session's range is the ordinary way this happens on an equity index — the
+    subtraction outweighs the range and the term is negative. Averaged over a
+    window the sum can still be negative, and the square root of a negative
+    variance is a NaN sitting in the interior of the series. ``_sqrt_variance``
+    floors it at zero, so a window whose net estimate is "less than no variance"
+    reports zero rather than poisoning everything downstream. The estimator is
+    the more accurate one *because* it subtracts the drift; that same accuracy is
+    what lets the intermediate quantity go negative.
+
+    ponytail: the clamp reports 0.0 rather than dropping the bar or widening the
+    window. Both alternatives were worse for the reason ``indicators/__init__.py``
+    gives for the NaN rule — they either invent information or break the
+    same-length contract. The honest upgrade path is a drift term in the
+    numerator, which is a different estimator with a different name.
     """
-    high, low, close = (
-        as_float(data["high"]),
-        as_float(data["low"]),
-        as_float(data["close"]),
-    )
+    high, low = as_float(data["high"]), as_float(data["low"])
+    open_, close = as_float(data["open"]), as_float(data["close"])
     span = max(int(period), 2)
-    total_range = rolling_mean(true_range(high, low, close), span)
-    window_span = rolling_max(high, span) - rolling_min(low, span)
-    ratio = safe_div(total_range, window_span, fill=0.0)
-    return 100.0 * np.log10(np.maximum(ratio, 1e-12)) / np.log10(float(span))
+    log_range = log_ratio(high, low)
+    log_body = log_ratio(close, open_)
+    per_bar = 0.5 * log_range * log_range - _GK_COEF * log_body * log_body
+    return {
+        "volatility": _sqrt_variance(rolling_mean(per_bar, span), annualise),
+    }
 
 
 @indicator(
-    "IND_STD_ERROR",
+    "IND_VOL_YANG_ZHANG",
     group="volatility",
-    lines=("upper", "lower"),
-    params={"period": P(20, 2, 400)},
-    synonyms=("standard error bands", "standard error", "std error", "se bands"),
+    lines=("volatility",),
+    params={"period": P(20, 2, 500), "annualise": P(252, 1, 4000)},
+    requires=("high", "low", "open", "close"),
+    synonyms=(
+        "yang-zhang",
+        "yang zhang",
+        "yang-zhang volatility",
+        "yangzhang",
+    ),
 )
-def standard_error_bands(data: Data, *, period: int = 20) -> dict:
-    """Standard Error Bands: a linear-regression channel, not a volatility band.
+def yang_zhang_volatility(
+    data: Data, *, period: int = 20, annualise: int = 252
+) -> dict:
+    """Yang-Zhang: three variance components, weighted by their own sampling error.
 
-    Unlike Bollinger these are not symmetric about price and they tilt with the
-    fitted slope — both bands follow the regression line, one standard error of
-    the residuals above and below. That is the reason to reach for them when a
-    Bollinger channel gets dragged sideways by a single outlier.
+    The overnight gap, the open-to-close move and the intraday range are separate
+    sources of information with separate noise, and summing them unweighted
+    double-counts the intraday range — which contains both the body and the
+    extremes. So the three are combined as::
 
-    Closed form over the trailing window: for ``x = 0..n-1`` the slope comes from
-    ``Sxy`` and the residual sum of squares from ``Syy``, both rolling sums, then
-    the normal equations give the intercept. There is no matrix solve — this
-    deployment has no cuBLAS, so ``cp.linalg`` is unavailable and the fit is
-    written out. ``x`` is the bar's *age within the window*, so the trailing view
-    pairs with an ascending ramp: the oldest bar is x=0.
+        k * var(open->close) + (1 - k) * rogers_satchell
+        + var(overnight)
+
+    with ``k = 0.34 / (1.34 + (N+1)/(N-1))``, which rises with the window length
+    because a longer window shrinks the open-to-close variance's sampling error
+    and makes it the more trustworthy of the two intraday terms. Rogers-Satchell
+    (``ln(H/C)ln(H/O) + ln(L/C)ln(L/O)``) is the component that needs no open-to-
+    close correction, because it uses the close as the pivot rather than as a
+    measured move.
+
+    Yang & Zhang's result is that this is the **upper bound** on the other
+    estimators — it is never expected to read below Garman-Klass on the same
+    window, and the test suite asserts exactly that.
+
+    Two things follow from the definition and are easy to get wrong:
+
+    **The warmup is one bar longer than the others.** A window of ``N`` overnight
+    returns spans ``N+1`` closes, so the first finite bar is ``N`` and not
+    ``N-1``. Bar 0 gets a genuine NaN rather than a fill of ``close[0]``: that
+    fill would inject a fake ``ln(O_0/C_0) = 0`` overnight return, silently
+    shortening the warmup by a bar and biasing the first real window low.
+
+    **``period`` cannot be 1.** The ``k`` formula divides by ``N - 1``, so the
+    published parameter floor of 2 is load-bearing, not cosmetic.
+
+    ponytail: no drift/mean-adjustment on the open-to-close term. Yang-Zhang
+    without a drift estimate is the standard published form and is what the
+    literature's upper-bound result is stated for; adding one would make the
+    bound untestable against the reference. The upgrade path is a mean term
+    parameterised by the window's own return.
     """
-    close = as_float(data["close"])
+    high, low = as_float(data["high"]), as_float(data["low"])
+    open_, close = as_float(data["open"]), as_float(data["close"])
     span = max(int(period), 2)
     n = float(span)
-    # All constants for a window of this length — computed once, not per bar.
-    sum_x = n * (n - 1.0) / 2.0
-    sum_xx = n * (n - 1.0) * (2.0 * n - 1.0) / 6.0
-    denom = n * sum_xx - sum_x * sum_x
-    ramp = np.arange(span, dtype=float)
 
-    # Row i is [close[i-n+1] ... close[i]], and x runs 0..n-1 across it, so the
-    # oldest bar in the window is x=0. The strided view is `span-1` bars shorter
-    # than the series, so the result is re-padded to align with the rolling sums.
-    view = np.lib.stride_tricks.sliding_window_view(close, span)
-    sum_xy = np.full(len(close), np.nan, dtype=float)
-    sum_xy[span - 1 :] = (view * ramp).sum(axis=-1)
-    sum_y = rolling_mean(close, span) * n
-    sum_yy = rolling_mean(close * close, span) * n
+    # `shift` with no fill leaves bar 0 NaN: it has no prior close, so it has no
+    # overnight return. See the warmup note above.
+    previous_close = shift(close, 1)
+    overnight = log_ratio(open_, previous_close)
+    open_to_close = log_ratio(close, open_)
 
-    slope = (n * sum_xy - sum_x * sum_y) / denom
-    intercept = (sum_y - slope * sum_x) / n
-    # SSE = Syy - b0*Sy - b1*Sxy, the normal equations in residual form.
-    sse = np.maximum(sum_yy - intercept * sum_y - slope * sum_xy, 0.0)
-    error = np.sqrt(sse / max(n - 2.0, 1.0))
-    # The band's value is the fit at the window's LAST bar, x = n-1.
-    fitted = intercept + slope * (n - 1.0)
-    return {"upper": fitted + error, "lower": fitted - error}
+    # Rogers-Satchell: the high and low each measured against both the close and
+    # the open, so the body is the pivot and nothing is double-counted.
+    high_close, high_open = log_ratio(high, close), log_ratio(high, open_)
+    low_close, low_open = log_ratio(low, close), log_ratio(low, open_)
+    rogers_satchell = high_close * high_open + low_close * low_open
+
+    k = 0.34 / (1.34 + (n + 1.0) / (n - 1.0))
+    variance = (
+        rolling_std(overnight, span) ** 2
+        + k * rolling_std(open_to_close, span) ** 2
+        + (1.0 - k) * rolling_mean(rogers_satchell, span)
+    )
+    return {"volatility": _sqrt_variance(variance, annualise)}
 
 
 @indicator(
@@ -241,8 +340,8 @@ __all__ = [
     "atr",
     "bollinger",
     "chandelier",
-    "choppiness",
+    "garman_klass_volatility",
     "historical_volatility",
-    "standard_error_bands",
-    "ulcer",
+    "parkinson_volatility",
+    "yang_zhang_volatility",
 ]

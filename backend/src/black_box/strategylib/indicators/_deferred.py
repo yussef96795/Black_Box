@@ -1,7 +1,7 @@
-"""Six indicators that do not fit the system, and why.
+"""Seven indicators that do not fit the system, and why.
 
-The other fifty are registered in this package. These six are not, and that is a
-deliberate decision rather than an oversight — each one violates a rule the
+The other fifty-two are registered in this package. These seven are not, and that
+is a deliberate decision rather than an oversight — each one violates a rule the
 library holds to. They are collected here with the specific rule each breaks, so
 the decision is reviewable and reversible once the rule changes.
 

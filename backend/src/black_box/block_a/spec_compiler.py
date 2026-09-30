@@ -112,7 +112,7 @@ _EXIT_PHRASES: tuple[tuple[str, str], ...] = (
 #: ``phrases.indicators`` key (e.g. a minimal per-spec registry).
 #:
 #: The real table is *generated* from the strategylib indicator registry — see
-#: ``strategylib/indicators/_generate.py`` — and holds 229 rows covering all 78
+#: ``strategylib/indicators/_generate.py`` — and holds 244 rows covering all 81
 #: feed ids. This stays deliberately small rather than mirroring it: a second
 #: hand-maintained copy of a generated table is a drift bug waiting to happen,
 #: and the fallback's only job is to keep the four indicators the shipped seed

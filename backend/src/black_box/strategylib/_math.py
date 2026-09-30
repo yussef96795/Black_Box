@@ -38,6 +38,18 @@ from black_box.strategylib._kernels import recursive, running_max, running_min
 # Elementwise helpers
 # ---------------------------------------------------------------------------
 
+#: Floor for any log's argument. A non-positive price is invalid input, but
+#: ``log(0)`` is ``-inf`` and one ``-inf`` poisons every later bar, because the
+#: rolling helpers below are cumsum-based. Clamping trades an impossible value
+#: for a merely extreme one (~-27.6) that cannot destroy the series.
+#:
+#: ponytail: lives here rather than next to its first caller because the log
+#: ratio is a *library-wide* idiom — close-to-close, Parkinson, Garman-Klass and
+#: Yang-Zhang all floor a price ratio before taking its log, and a safety
+#: constant that exists in two places with two rationales is one refactor away
+#: from existing in two places with two *values*.
+_LOG_FLOOR = 1e-12
+
 
 def as_float(x: Any) -> Any:
     """Contiguous float64 view of ``x`` — the only dtype the contract emits."""
@@ -71,6 +83,26 @@ def safe_div(a: Any, b: Any, fill: float = 0.0) -> Any:
     """
     mask = b != 0
     return np.where(mask, a / np.where(mask, b, 1.0), fill)
+
+
+def log_ratio(numerator: Any, denominator: Any) -> Any:
+    """``log(numerator / denominator)`` with a guarded denominator and a floored log.
+
+    The clamped-log idiom, in one place: every log return, every ``log(H / L)`` and
+    every ``log(C / O)`` in the library goes through here.
+
+    Two independent guards, and they are not the same guard. ``safe_div``'s fill
+    of 1.0 means a *zero* denominator reads as "no ratio" and takes ``log(1) = 0``
+    — the same reading ``pct_change`` gives a flat-lining instrument, which is
+    right, because a zero prior price is a data fault rather than a crash. The
+    ``_LOG_FLOOR`` clamp is the second guard: it catches a *negative* ratio, which
+    is the case that actually reaches ``-inf``.
+
+    ponytail: a NaN denominator is not handled and deliberately so — it stays NaN
+    through ``safe_div`` and out the other side, because NaN is the honest answer
+    for a missing bar. The generic contract test asserts the distinction.
+    """
+    return np.log(np.maximum(safe_div(numerator, denominator, fill=1.0), _LOG_FLOOR))
 
 
 def shift(x: Any, n: int, fill: Any = None) -> Any:
@@ -345,6 +377,7 @@ __all__ = [
     "change",
     "ema",
     "highest",
+    "log_ratio",
     "lowest",
     "mean_dev",
     "median_price",
