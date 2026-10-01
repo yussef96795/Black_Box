@@ -149,20 +149,25 @@ def test_causality_prefix_invariance(feed_id: str) -> None:
     This is the causality test. A centered window, a negative lag or a backward
     fill all show up here as a mismatch against the longer run, and nothing else
     in the suite would notice.
+
+    600 bars is the shortest run on which *every* registered indicator publishes
+    at least one value at its defaults — asserted rather than assumed, because an
+    indicator whose entire line is NaN here would pass this test vacuously. The
+    ARCH family is what sets the bar: ``burn_in`` defaults to 500, so it needs 502.
     """
     spec = INDICATORS[feed_id]
     params = bind_params(spec, {})
-    short, long = ohlcv(500), ohlcv(1100)
+    short, long = ohlcv(600), ohlcv(1200)
     for line in spec.lines:
         a = to_host(spec.fn(short, **params)[line])
         b = to_host(spec.fn(long, **params)[line])
         start = first_finite(a)
-        assert start >= 0, f"{feed_id}.{line} is entirely NaN on 500 bars"
+        assert start >= 0, f"{feed_id}.{line} is entirely NaN on 600 bars"
         # Compare with NaN folded to a sentinel so the warmup prefix itself is
         # included: a NaN that moves is as much a causality break as a value that does.
         numpy.testing.assert_array_equal(
             numpy.nan_to_num(a, nan=-1e12),
-            numpy.nan_to_num(b[:500], nan=-1e12),
+            numpy.nan_to_num(b[:600], nan=-1e12),
             err_msg=f"{feed_id}.{line} revised a published bar when more data arrived",
         )
 

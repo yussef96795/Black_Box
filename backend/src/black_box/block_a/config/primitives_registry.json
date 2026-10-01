@@ -22,7 +22,6 @@
     "IND_CCI",
     "IND_CHANDELIER",
     "IND_CHANDELIER_SHORT",
-    "IND_CHOP",
     "IND_CMF",
     "IND_CONNORS_RSI",
     "IND_COPPOCK",
@@ -31,9 +30,12 @@
     "IND_DONCHIAN_LOWER",
     "IND_DONCHIAN_UPPER",
     "IND_DPO",
+    "IND_EGARCH_11",
     "IND_EMA",
     "IND_EOM",
     "IND_FISHER",
+    "IND_GARCH_11",
+    "IND_GJR_GARCH_11",
     "IND_GMMA",
     "IND_GMMA_LONG1",
     "IND_GMMA_LONG2",
@@ -67,8 +69,6 @@
     "IND_ROC",
     "IND_RSI",
     "IND_SMA",
-    "IND_STD_ERROR",
-    "IND_STD_ERROR_LOWER",
     "IND_STOCH",
     "IND_STOCH_D",
     "IND_STOCH_RSI",
@@ -77,7 +77,6 @@
     "IND_TEMA",
     "IND_TRIX",
     "IND_TSI",
-    "IND_UI",
     "IND_VOLUME_OSC",
     "IND_VOLUME_OSC_SIGNAL",
     "IND_VOL_GARMAN_KLASS",
@@ -461,14 +460,6 @@
         "IND_VOL_PARKINSON"
       ],
       [
-        "standard error bands",
-        "IND_STD_ERROR"
-      ],
-      [
-        "standard error bands",
-        "IND_STD_ERROR_LOWER"
-      ],
-      [
         "high low volatility",
         "IND_VOL_PARKINSON"
       ],
@@ -541,6 +532,10 @@
         "IND_ADX_PLUS_DI"
       ],
       [
+        "exponential garch",
+        "IND_EGARCH_11"
+      ],
+      [
         "on balance volume",
         "IND_OBV"
       ],
@@ -559,10 +554,6 @@
       [
         "volume oscillator",
         "IND_VOLUME_OSC_SIGNAL"
-      ],
-      [
-        "choppiness index",
-        "IND_CHOP"
       ],
       [
         "cumulative delta",
@@ -657,6 +648,10 @@
         "IND_BB_UPPER"
       ],
       [
+        "gjr-garch(1,1)",
+        "IND_GJR_GARCH_11"
+      ],
+      [
         "hurst exponent",
         "IND_HURST"
       ],
@@ -681,20 +676,16 @@
         "IND_ICHIMOKU_SENKOU_B"
       ],
       [
+        "leverage garch",
+        "IND_GJR_GARCH_11"
+      ],
+      [
         "moving average",
         "IND_SMA"
       ],
       [
         "rate of change",
         "IND_ROC"
-      ],
-      [
-        "standard error",
-        "IND_STD_ERROR"
-      ],
-      [
-        "standard error",
-        "IND_STD_ERROR_LOWER"
       ],
       [
         "standard score",
@@ -757,6 +748,10 @@
         "IND_CONNORS_RSI"
       ],
       [
+        "egarch(1,1)",
+        "IND_EGARCH_11"
+      ],
+      [
         "super trend",
         "IND_SUPERTREND"
       ],
@@ -777,12 +772,12 @@
         "IND_ASI_SIGNAL"
       ],
       [
-        "ulcer index",
-        "IND_UI"
-      ],
-      [
         "williams %r",
         "IND_WILLIAMS_R"
+      ],
+      [
+        "arch model",
+        "IND_GARCH_11"
       ],
       [
         "chandelier",
@@ -793,8 +788,12 @@
         "IND_CHANDELIER_SHORT"
       ],
       [
-        "choppiness",
-        "IND_CHOP"
+        "egarch 1,1",
+        "IND_EGARCH_11"
+      ],
+      [
+        "garch(1,1)",
+        "IND_GARCH_11"
       ],
       [
         "money flow",
@@ -853,6 +852,18 @@
         "IND_BB_UPPER"
       ],
       [
+        "garch 1,1",
+        "IND_GARCH_11"
+      ],
+      [
+        "gjr garch",
+        "IND_GJR_GARCH_11"
+      ],
+      [
+        "gjr-garch",
+        "IND_GJR_GARCH_11"
+      ],
+      [
         "parabolic",
         "IND_PSAR"
       ],
@@ -863,14 +874,6 @@
       [
         "parkinson",
         "IND_VOL_PARKINSON"
-      ],
-      [
-        "std error",
-        "IND_STD_ERROR"
-      ],
-      [
-        "std error",
-        "IND_STD_ERROR_LOWER"
       ],
       [
         "stoch rsi",
@@ -919,14 +922,6 @@
       [
         "momentum",
         "IND_ROC"
-      ],
-      [
-        "se bands",
-        "IND_STD_ERROR"
-      ],
-      [
-        "se bands",
-        "IND_STD_ERROR_LOWER"
       ],
       [
         "williams",
@@ -993,6 +988,10 @@
         "IND_ZSCORE"
       ],
       [
+        "egarch",
+        "IND_EGARCH_11"
+      ],
+      [
         "fisher",
         "IND_FISHER"
       ],
@@ -1025,6 +1024,10 @@
         "IND_ICHIMOKU_SENKOU_B"
       ],
       [
+        "garch",
+        "IND_GARCH_11"
+      ],
+      [
         "hurst",
         "IND_HURST"
       ],
@@ -1035,10 +1038,6 @@
       [
         "stoch",
         "IND_STOCH_D"
-      ],
-      [
-        "chop",
-        "IND_CHOP"
       ],
       [
         "dema",
@@ -1231,10 +1230,6 @@
       [
         "hv",
         "IND_HV"
-      ],
-      [
-        "ui",
-        "IND_UI"
       ]
     ]
   },

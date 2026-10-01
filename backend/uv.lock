@@ -281,6 +281,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-multipart" },
     { name = "rich" },
+    { name = "scipy" },
     { name = "uvicorn" },
 ]
 
@@ -308,6 +309,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "rich", specifier = ">=14.3.4" },
+    { name = "scipy", specifier = ">=1.11" },
     { name = "uvicorn", specifier = ">=0.53.0" },
 ]
 

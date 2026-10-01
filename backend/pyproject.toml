@@ -21,6 +21,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
     "rich>=14.3.4",
+    "scipy>=1.11",
     "uvicorn>=0.53.0",
 ]
 
