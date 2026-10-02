@@ -52,6 +52,9 @@
     "IND_ICHIMOKU_KIJUN",
     "IND_ICHIMOKU_SENKOU_A",
     "IND_ICHIMOKU_SENKOU_B",
+    "IND_KALMAN",
+    "IND_KALMAN_ERROR",
+    "IND_KALMAN_GAIN",
     "IND_KAMA",
     "IND_KELTNER",
     "IND_KELTNER_LOWER",
@@ -704,6 +707,30 @@
         "IND_COPPOCK"
       ],
       [
+        "dynamic trend",
+        "IND_KALMAN"
+      ],
+      [
+        "dynamic trend",
+        "IND_KALMAN_ERROR"
+      ],
+      [
+        "dynamic trend",
+        "IND_KALMAN_GAIN"
+      ],
+      [
+        "kalman filter",
+        "IND_KALMAN"
+      ],
+      [
+        "kalman filter",
+        "IND_KALMAN_ERROR"
+      ],
+      [
+        "kalman filter",
+        "IND_KALMAN_GAIN"
+      ],
+      [
         "parabolic sar",
         "IND_PSAR"
       ],
@@ -998,6 +1025,18 @@
       [
         "garman",
         "IND_VOL_GARMAN_KLASS"
+      ],
+      [
+        "kalman",
+        "IND_KALMAN"
+      ],
+      [
+        "kalman",
+        "IND_KALMAN_ERROR"
+      ],
+      [
+        "kalman",
+        "IND_KALMAN_GAIN"
       ],
       [
         "zscore",

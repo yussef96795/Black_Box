@@ -1,4 +1,4 @@
-"""The indicator library — 52 indicators behind one decorator and two indices.
+"""The indicator library — 53 indicators behind one decorator and two indices.
 
 Importing this package is what populates the registry: each module below declares
 its indicators with ``@indicator``, and the decorator records them in

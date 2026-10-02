@@ -97,48 +97,6 @@ def hma(data: Data, *, period: int = 20) -> dict:
 
 
 @indicator(
-    "IND_DEMA",
-    group="trend",
-    params={"period": P(20, 1, 500)},
-    synonyms=("dema", "double exponential moving average"),
-)
-def dema(data: Data, *, period: int = 20) -> dict:
-    """``2*EMA1 - EMA2(EMA1)`` — cancels the EMA's own lag once."""
-    first = ema(data["close"], period)
-    return 2.0 * first - ema(first, period)
-
-
-@indicator(
-    "IND_TEMA",
-    group="trend",
-    params={"period": P(20, 1, 500)},
-    synonyms=("tema", "triple exponential moving average"),
-)
-def tema(data: Data, *, period: int = 20) -> dict:
-    """``3*EMA1 - 3*EMA2 + EMA3`` — a cubic correction to the lag, not a smoothing."""
-    first = ema(data["close"], period)
-    second = ema(first, period)
-    return 3.0 * first - 3.0 * second + ema(second, period)
-
-
-@indicator(
-    "IND_MCGINLEY",
-    group="trend",
-    params={"period": P(10, 2, 200)},
-    synonyms=("mcginley dynamic", "mcginley"),
-)
-def mcginley(data: Data, *, period: int = 10) -> dict:
-    """Self-adjusting MA: ``y += k*(x - y)`` with ``k = 2/(period+1)``.
-
-    Algebraically identical to the fixed-alpha scan, so it rides the same kernel.
-    What distinguishes it from :func:`ema` is the intent, not the arithmetic:
-    the period is quoted against price itself, and the line is meant to be read
-    as a dynamic support level.
-    """
-    return recursive(as_float(data["close"]), 2.0 / (period + 1))
-
-
-@indicator(
     "IND_KAMA",
     group="trend",
     params={
@@ -172,40 +130,7 @@ def kama(data: Data, *, period: int = 10, fast: int = 2, slow: int = 30) -> dict
     return recursive_step(close, sc)
 
 
-@indicator(
-    "IND_TRIX",
-    group="trend",
-    params={"period": P(15, 1, 200)},
-    synonyms=("trix", "triple exponential average", "triple smoothed rate of change"),
-)
-def trix(data: Data, *, period: int = 15) -> dict:
-    """Percent rate of change of a triple-smoothed EMA — the one crossing that counts."""
-    close = as_float(data["close"])
-    smooth = ema(ema(ema(close, period), period), period)
-    return 100.0 * safe_div(change(smooth), shift(smooth, 1, fill=smooth[0]))
 
-
-@indicator(
-    "IND_GMMA",
-    group="trend",
-    lines=("short1", "short2", "short3", "long1", "long2", "long3", "long4", "long5"),
-    params={"short": P(3, 1, 100), "long": P(30, 2, 400)},
-    synonyms=("gmma", "guppy multiple moving average"),
-)
-def gmma(data: Data, *, short: int = 3, long: int = 30) -> dict:
-    """Two EMA bands — 3 short and 5 long — for retail/institutional separation.
-
-    Spans are 1, 2, 3 times ``short`` and 1..5 times ``long``, the standard Guppy
-    layout. The signal people actually trade is the *spread* between the bands,
-    which a consumer builds from any two of these lines.
-    """
-    close = as_float(data["close"])
-    out: dict[str, Any] = {}
-    for offset in (1, 2, 3):
-        out[f"short{offset}"] = ema(close, short * offset)
-    for offset in (1, 2, 3, 4, 5):
-        out[f"long{offset}"] = ema(close, long * offset)
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -318,40 +243,7 @@ def keltner(
     return {"upper": mid + width, "middle": mid, "lower": mid - width}
 
 
-@indicator(
-    "IND_ICHIMOKU",
-    group="trend",
-    lines=("tenkan", "kijun", "senkou_a", "senkou_b", "chikou"),
-    params={
-        "conversion": P(9, 1, 200),
-        "base": P(26, 1, 400),
-        "span_b": P(52, 1, 600),
-    },
-    requires=("high", "low", "close"),
-    synonyms=("ichimoku", "ichimoku kinko hyo", "ichimoku cloud", "cloud"),
-)
-def ichimoku(
-    data: Data, *, conversion: int = 9, base: int = 26, span_b: int = 52
-) -> dict:
-    """Ichimoku Kinko Hyo: two conversion lines, a projected cloud, and Chikou."""
 
-    def midpoint(span: int) -> Any:
-        return (highest(high, span) + lowest(low, span)) / 2.0
-
-    high, low, close = (
-        as_float(data["high"]),
-        as_float(data["low"]),
-        as_float(data["close"]),
-    )
-    tenkan = midpoint(conversion)
-    kijun = midpoint(base)
-    return {
-        "tenkan": tenkan,
-        "kijun": kijun,
-        "senkou_a": (tenkan + kijun) / 2.0,
-        "senkou_b": midpoint(span_b),
-        "chikou": close,
-    }
 
 
 @indicator(
@@ -477,20 +369,14 @@ def psar(
 
 __all__ = [
     "adx",
-    "dema",
     "donchian",
     "ema_ind",
-    "gmma",
     "hma",
-    "ichimoku",
     "kama",
     "keltner",
     "macd",
-    "mcginley",
     "psar",
     "sma",
     "supertrend",
-    "tema",
-    "trix",
     "wma_ind",
 ]

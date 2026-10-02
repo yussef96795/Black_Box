@@ -384,7 +384,6 @@ def yang_zhang_volatility(
 )
 def garch_11(
     data: Data,
-    *,
     omega: float = 1e-6,
     alpha: float = 0.1,
     beta: float = 0.88,
